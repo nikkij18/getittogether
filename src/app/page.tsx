@@ -5,23 +5,65 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { TextDisperse } from '@/components/ui/text-disperse';
 
 // ---- Roast Templates ----
-const roasts = [
-  `You've been "about to start" {task} for how long now? At this point, your procrastination deserves its own LinkedIn profile. It has more experience than you.`,
-  `Bestie, the audacity of you sitting there scrolling while {task} is literally RIGHT THERE waiting for you. Your avoidance skills are genuinely impressive — too bad that's not a marketable skill.`,
-  `Fun fact: while you've been avoiding {task}, you've probably reorganized your entire desk, deep-cleaned your phone screen, and learned three TikTok dances. Incredible productivity — just not the useful kind.`,
-  `You know what's scarier than {task}? The version of you three weeks from now who STILL hasn't done it and is now speed-running it at 2am with tears. Don't be that person.`,
-  `Listen, {task} is literally just sitting there, unbothered, while you have a whole existential crisis about starting it. It's not that deep. You are making it that deep. Stop it.`,
-  `The fact that you need a website to roast you into doing {task} is the most beautifully unhinged form of self-awareness I've ever seen. Channel that energy into DOING THE THING.`,
-  `Babe, {task} takes less time than the amount of time you've spent THINKING about doing it. Your brain invented a whole horror movie about a task that's basically a montage scene. Just press play.`,
-  `You've spent more energy avoiding {task} than it would take to actually finish it. That's not laziness, that's TALENT. Now redirect that talent.`,
-  `Imagine explaining to your future successful self that you almost didn't make it because you kept putting off {task}. They'd be so embarrassed for you. Don't let them down.`,
-  `{task}? More like "{task} that I will absolutely crush in the next 30 minutes because I'm actually capable and was just being a little dramatic." Fixed the name for you.`,
-  `The way you've been treating {task} like it's a final boss when it's literally a tutorial level enemy. You have the skills. You're just being a coward about it (affectionately).`,
-  `Let's be real: you came to this website because you KNOW you should be doing {task} right now. That's growth. That's self-awareness. Now take it one step further and actually start.`,
-  `Here's the thing about {task}: future you is either going to be grateful or furious. Right now, you're choosing. And the couch is NOT the right answer.`,
-  `You're out here living your avoidant era while {task} is just sitting in the corner like a neglected houseplant. Water it. DO THE THING.`,
-  `Every minute you spend not doing {task} is a minute you're choosing anxiety over relief. And for what? So you can do it later but worse? Make it make sense.`,
-];
+
+const roastsByCategory: Record<string, string[]> = {
+
+  // --- FINANCIALS: taxes, bills, FAFSA, financial aid, budgeting ---
+  'tax|taxes|irs|fafsa|financial aid|scholarship|grant|bill|bills|rent|payment|utilities|subscription|budget|budgeting': [
+    `You are letting the government keep your money because you won't sit down for 45 minutes. That's a crime against yourself.`,
+    `Bestie, ignoring financial stuff doesn't make it go away. It just makes it bigger, scarier, and more expensive. You are literally paying a procrastination tax on top of your actual taxes.`,
+    `Your bank account is out here suffering while you "don't feel like dealing with it." Feel like it. For your wallet's sake.`,
+    `Every day you put this off is a day you're choosing stress over relief. The form is not that long. The website is not that complicated. You are the only obstacle.`,
+    `The audacity of letting money stress you out but also not doing the one thing that fixes it. Sit down. Open the tab. Do the thing.`,
+    `Future you — the one who filed on time, got the refund, and slept peacefully — is begging you to start right now.`,
+  ],
+
+  // --- EXERCISE: gym, running, yoga, walking, working out ---
+  'exercise|workout|gym|run|running|yoga|walk|walking|pilates|lift|lifting|spin|cycling': [
+    `You paid for that gym membership. It is sitting there. Judging you. Every. Single. Month.`,
+    'Get the FUCK UP!',
+    `The version of you that works out regularly is not a different person — it's just you, but you actually went. That's literally all it takes.`,
+    `You're going to feel SO good after. You know this. You've done it before. So why are you lying on the couch like you don't know this?`,
+    `Your body is a temple and right now you're treating it like a storage unit. Go move it. It doesn't even have to be that long.`,
+    `The hardest part is putting on your shoes. That's it. That's the whole battle. Put. On. Your. Shoes.`,
+    `Imagine being this close to the endorphins and just... not taking them. Free mood boost. Right there. Just a workout away.`,
+    `You said "I'll go tomorrow" yesterday. And the day before. Tomorrow is a myth. The gym is real. Go.`,
+  ],
+
+  // --- SCHOOL: studying, homework, essays, projects, exams ---
+  'study|studying|exam|test|homework|assignment|essay|paper|project|presentation|thesis|dissertation|read|reading|class|course': [
+    `That assignment is not going to write itself. Trust me. I would know. It's been waiting for you for days and it has not moved one inch.`,
+    `You're going to have to do it anyway. The only question is whether you do it with time to breathe or at 3am in a full panic spiral. Choose wisely.`,
+    `The grade you want and the effort you're currently putting in are not on speaking terms. Time to reintroduce them.`,
+    `Bestie, "I work better under pressure" is something people say when they've never actually tried NOT being under pressure. Try it. Start now.`,
+    `Your professor is not thinking about you. Your grade, however, very much is. Go earn it.`,
+    `Every hour you avoid this, the task gets scarier in your head and no smaller in reality. Just open the doc. That's step one.`,
+    `Future you — sitting in that exam, or turning in that paper — is entirely depending on present you. Don't let them down for a TikTok scroll session.`,
+  ],
+
+  // --- CLEANING: room, laundry, dishes, organizing ---
+  'clean|cleaning|room|apartment|house|tidy|organize|mess|laundry|dishes|wash|washing|vacuum|declutter|trash|folding': [
+    `CLEANING TEST 123 - Can't bring a bad bitch back to a hoarder's house, lock in`,
+    `Ewwwwwwwwwwwwwwwww`,
+  ],
+
+  // --- MISC: catch-all for everything else ---
+  'default': [
+    `You've been "about to start" {task} for how long now? At this point, your procrastination deserves its own LinkedIn profile. It has more experience than you.`,
+    `Charlie Donovan golfs 24/7 and still gets {task} done. What’s your excuse?`,
+    `Get the FUCK UP!`,
+    `Do {task} now or venmo Nikki $20...GO GO GO`,
+  ],
+};
+
+function getRoast(task: string): string {
+  const lower = task.toLowerCase();
+  for (const [pattern, roastList] of Object.entries(roastsByCategory)) {
+    if (pattern === 'default') continue;
+    if (new RegExp(pattern, 'i').test(lower)) return pick(roastList);
+  }
+  return pick(roastsByCategory['default']).replace(/\{task\}/g, task);
+}
 
 const closers = [
   "you've literally survived worse. go do it.",
@@ -264,7 +306,7 @@ export default function HomePage() {
     currentTask.current = trimmed;
     setLoading(true);
     setTimeout(() => {
-      setRoast(pick(roasts).replace(/\{task\}/g, trimmed));
+      setRoast(getRoast(trimmed));
       setSteps(getSteps(trimmed));
       setCloser(pick(closers));
       setShowResults(true);
