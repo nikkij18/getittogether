@@ -5,7 +5,17 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { TextDisperse } from '@/components/ui/text-disperse';
 
 // ---- Roast Templates ----
-const roasts = [''];
+
+const roastsByCategory: Record<string, string[]> = { default: [''] };
+
+function getRoast(task: string): string {
+  const lower = task.toLowerCase();
+  for (const [pattern, roastList] of Object.entries(roastsByCategory)) {
+    if (pattern === 'default') continue;
+    if (new RegExp(pattern, 'i').test(lower)) return pick(roastList);
+  }
+  return pick(roastsByCategory['default']).replace(/\{task\}/g, task);
+}
 
 const closers = [''];
 
@@ -237,7 +247,7 @@ export default function HomePage() {
     currentTask.current = trimmed;
     setLoading(true);
     setTimeout(() => {
-      setRoast(pick(roasts).replace(/\{task\}/g, trimmed));
+      setRoast(getRoast(trimmed));
       setSteps(getSteps(trimmed));
       setCloser(pick(closers));
       setShowResults(true);
