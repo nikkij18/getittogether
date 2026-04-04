@@ -1,5 +1,5 @@
-cd "/Users/nikki/Personal Projects/roast-my-task"
+cd "/Users/nikki/Personal Projects/getittogether"
 git add .
 git commit -m "initial commit"
-git remote add origin https://github.com/nikkij18/getitdone.git
+git remote add origin https://github.com/nikkij18/getittogether.git
 git push -u origin main
