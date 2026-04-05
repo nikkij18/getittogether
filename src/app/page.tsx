@@ -3,6 +3,9 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TextDisperse } from '@/components/ui/text-disperse';
+import { Typewriter } from '@/components/ui/typewriter';
+import MorphingArrowButton from '@/components/ui/morphing-arrow-button';
+import { Checkbox } from '@/components/ui/checkbox';
 
 // ---- Roast Templates ----
 
@@ -25,7 +28,6 @@ const roastsByCategory: Record<string, string[]> = {
     `The version of you that works out regularly is not a different person — it's just you, but you actually went. That's literally all it takes.`,
     `You're going to feel SO good after. You know this. You've done it before. So why are you lying on the couch like you don't know this?`,
     `Your body is a temple and right now you're treating it like a storage unit. Go move it. It doesn't even have to be that long.`,
-    `The hardest part is putting on your shoes. That's it. That's the whole battle. Put. On. Your. Shoes.`,
     `Imagine being this close to the endorphins and just... not taking them. Free mood boost. Right there. Just a workout away.`,
     `You said "I'll go tomorrow" yesterday. And the day before. Tomorrow is a myth. The gym is real. Go.`,
   ],
@@ -43,7 +45,7 @@ const roastsByCategory: Record<string, string[]> = {
 
   // --- CLEANING: room, laundry, dishes, organizing ---
   'clean|cleaning|room|apartment|house|tidy|organize|mess|laundry|dishes|wash|washing|vacuum|declutter|trash|folding': [
-    `CLEANING TEST 123 - Can't bring a bad bitch back to a hoarder's house, lock in`,
+    `Can't bring a bad bitch back to a hoarder's house, lock in`,
     `Ewwwwwwwwwwwwwwwww`,
   ],
 
@@ -69,12 +71,10 @@ const closers = [
   "you've literally survived worse. go do it.",
   "it's going to feel SO good when it's done. trust.",
   "future you is already saying thank you.",
-  "you're more capable than your anxiety thinks.",
   "one step at a time. you've SO got this.",
   "the hardest part is starting. everything after that is momentum.",
   "done is better than perfect. always.",
   "you're not lazy — you were just recharging. now GO.",
-  "discipline is just spicy motivation. be spicy.",
   "remember: 10 minutes of actually doing > 3 hours of dreading.",
 ];
 
@@ -250,13 +250,6 @@ function fireConfetti(canvas: HTMLCanvasElement) {
   animate();
 }
 
-// ---- Suggestion chips ----
-const suggestions = [
-  { label: 'doing my taxes', task: 'doing my taxes' },
-  { label: 'cleaning my room', task: 'cleaning my room' },
-  { label: 'dentist appt', task: 'scheduling a dentist appointment' },
-  { label: 'replying to that email', task: 'replying to that email' },
-];
 
 // ---- Dark mode hook ----
 function useDarkMode() {
@@ -291,6 +284,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [heroHovered, setHeroHovered] = useState(false);
+  const [checkedSteps, setCheckedSteps] = useState<boolean[]>([]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
@@ -311,7 +305,7 @@ export default function HomePage() {
       setCloser(pick(closers));
       setShowResults(true);
       setLoading(false);
-      if (canvasRef.current) fireConfetti(canvasRef.current);
+      setCheckedSteps(new Array(getSteps(trimmed).length).fill(false));
       setTimeout(() => {
         resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 100);
@@ -328,11 +322,19 @@ export default function HomePage() {
   const handleNew = useCallback(() => {
     setShowResults(false);
     setTask('');
+    setCheckedSteps([]);
     setTimeout(() => {
       inputRef.current?.focus();
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }, 100);
   }, []);
+
+  // Fire confetti when every step is checked off
+  useEffect(() => {
+    if (checkedSteps.length > 0 && checkedSteps.every(Boolean)) {
+      if (canvasRef.current) fireConfetti(canvasRef.current);
+    }
+  }, [checkedSteps]);
 
   return (
     <>
@@ -425,9 +427,18 @@ export default function HomePage() {
             transition={{ duration: 0.5 }}
             className="mb-6"
           >
-            <h2 className="text-2xl md:text-3xl font-bold text-foreground text-center mb-8">
-              What have you been putting off?
-            </h2>
+            <div className="text-4xl md:text-5xl font-bold text-foreground text-center mb-4 whitespace-nowrap [font-family:var(--font-display)]">
+              I&apos;m avoiding{' '}
+              <Typewriter
+                text={['gym time', 'my taxes', 'my essay', 'laundry']}
+                speed={65}
+                deleteSpeed={35}
+                waitTime={1800}
+                cursorChar="_"
+                className="text-emerald-500"
+                cursorClassName=""
+              />
+            </div>
 
             <div className="flex gap-3 p-2 bg-card border-2 border-border rounded-3xl shadow-lg transition-all focus-within:border-emerald-500 focus-within:shadow-emerald-500/20 focus-within:shadow-xl">
               <input
@@ -436,40 +447,13 @@ export default function HomePage() {
                 value={task}
                 onChange={e => setTask(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && doRoast(task)}
-                placeholder="e.g. filling out financial aid forms..."
+                placeholder="What are you avoiding?"
                 maxLength={120}
                 className="flex-1 bg-transparent border-none outline-none text-foreground font-semibold px-4 py-3 placeholder:text-muted-foreground/50"
               />
-              <button
-                onClick={() => doRoast(task)}
-                disabled={loading}
-                className="flex-shrink-0 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-extrabold text-sm px-6 py-3 rounded-2xl transition-all hover:scale-[1.03] hover:shadow-lg active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {loading ? (
-                  <span className="flex gap-1 items-center">
-                    <span className="w-2 h-2 bg-white rounded-full animate-bounce" />
-                    <span className="w-2 h-2 bg-white rounded-full animate-bounce [animation-delay:0.15s]" />
-                    <span className="w-2 h-2 bg-white rounded-full animate-bounce [animation-delay:0.3s]" />
-                  </span>
-                ) : (
-                  'roast me'
-                )}
-              </button>
+              <MorphingArrowButton onClick={() => doRoast(task)} disabled={loading} />
             </div>
 
-            {/* Suggestion chips */}
-            <div className="flex items-center gap-2 mt-4 flex-wrap px-2">
-              <span className="text-xs font-bold text-muted-foreground">or try:</span>
-              {suggestions.map(s => (
-                <button
-                  key={s.task}
-                  onClick={() => { setTask(s.task); doRoast(s.task); }}
-                  className="px-3 py-1.5 text-xs font-bold bg-secondary text-secondary-foreground rounded-full border border-transparent hover:border-emerald-500 hover:bg-emerald-500/10 transition-all hover:-translate-y-0.5"
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
           </motion.div>
 
           {/* ===== RESULTS ===== */}
@@ -490,10 +474,6 @@ export default function HomePage() {
                   transition={{ duration: 0.4, delay: 0.1 }}
                   className="bg-card border-2 border-orange-200 dark:border-orange-900/50 rounded-2xl p-6 shadow-lg"
                 >
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="w-2 h-2 rounded-full bg-orange-400" />
-                    <span className="text-xs font-extrabold uppercase tracking-wider text-muted-foreground">your roast</span>
-                  </div>
                   <p className="text-foreground font-bold text-base md:text-lg leading-relaxed">{roast}</p>
                 </motion.div>
 
@@ -508,26 +488,67 @@ export default function HomePage() {
                     <span className="w-2 h-2 rounded-full bg-emerald-400" />
                     <span className="text-xs font-extrabold uppercase tracking-wider text-muted-foreground">ok but here&apos;s how to actually do it</span>
                   </div>
-                  <ol className="space-y-3">
-                    {steps.map((step, i) => (
-                      <motion.li
-                        key={i}
-                        initial={{ opacity: 0, x: -12 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.35 + i * 0.1, duration: 0.3 }}
-                        className="flex gap-3"
-                      >
-                        <span className="flex-shrink-0 w-7 h-7 bg-gradient-to-br from-emerald-400 to-teal-500 text-white text-xs font-extrabold rounded-full flex items-center justify-center mt-0.5">
-                          {i + 1}
-                        </span>
-                        <div>
-                          <span className="text-foreground font-semibold text-sm leading-relaxed">{step.text}</span>
-                          {step.note && (
-                            <span className="block text-xs text-muted-foreground italic mt-0.5">{step.note}</span>
-                          )}
-                        </div>
-                      </motion.li>
-                    ))}
+                  <ol className="space-y-4">
+                    {steps.map((step, i) => {
+                      const isChecked = !!checkedSteps[i];
+                      return (
+                        <motion.li
+                          key={i}
+                          initial={{ opacity: 0, x: -12 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: 0.35 + i * 0.1, duration: 0.3 }}
+                          className="flex gap-3 items-start"
+                        >
+                          <Checkbox
+                            checked={isChecked}
+                            onCheckedChange={(val) => {
+                              const updated = [...checkedSteps];
+                              updated[i] = val === true;
+                              setCheckedSteps(updated);
+                            }}
+                            className="mt-0.5 flex-shrink-0"
+                          />
+                          <div className="relative flex-1">
+                            {/* Scribble strikethrough */}
+                            <motion.svg
+                              width="100%"
+                              height="32"
+                              viewBox="0 0 340 32"
+                              preserveAspectRatio="none"
+                              className="absolute left-0 top-1/2 -translate-y-1/2 pointer-events-none z-20 w-full h-8"
+                            >
+                              <motion.path
+                                d="M 10 16.91 s 79.8 -11.36 98.1 -11.34 c 22.2 0.02 -47.82 14.25 -33.39 22.02 c 12.61 6.77 124.18 -27.98 133.31 -17.28 c 7.52 8.38 -26.8 20.02 4.61 22.05 c 24.55 1.93 113.37 -20.36 113.37 -20.36"
+                                vectorEffect="non-scaling-stroke"
+                                strokeWidth={2}
+                                strokeLinecap="round"
+                                strokeMiterlimit={10}
+                                fill="none"
+                                animate={{
+                                  pathLength: isChecked ? 1 : 0,
+                                  opacity: isChecked ? 1 : 0,
+                                }}
+                                transition={{
+                                  pathLength: { duration: 0.8, ease: 'easeInOut' },
+                                  opacity: { duration: 0.01, delay: isChecked ? 0 : 0.8 },
+                                }}
+                                className="stroke-zinc-400 dark:stroke-zinc-500"
+                              />
+                            </motion.svg>
+                            <motion.span
+                              animate={{ opacity: isChecked ? 0.4 : 1 }}
+                              transition={{ duration: 0.3 }}
+                              className="text-foreground font-semibold text-sm leading-relaxed block"
+                            >
+                              {step.text}
+                            </motion.span>
+                            {step.note && (
+                              <span className="block text-xs text-muted-foreground italic mt-0.5">{step.note}</span>
+                            )}
+                          </div>
+                        </motion.li>
+                      );
+                    })}
                   </ol>
                 </motion.div>
 
