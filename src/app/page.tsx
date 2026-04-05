@@ -6,6 +6,7 @@ import { TextDisperse } from '@/components/ui/text-disperse';
 import { Typewriter } from '@/components/ui/typewriter';
 import MorphingArrowButton from '@/components/ui/morphing-arrow-button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { ScribbleBg } from '@/components/ui/scribble-bg';
 
 // ---- Roast Templates ----
 
@@ -13,45 +14,38 @@ const roastsByCategory: Record<string, string[]> = {
 
   // --- FINANCIALS: taxes, bills, FAFSA, financial aid, budgeting ---
   'tax|taxes|irs|fafsa|financial aid|scholarship|grant|bill|bills|rent|payment|utilities|subscription|budget|budgeting': [
-    `You are letting the government keep your money because you won't sit down for 45 minutes. That's a crime against yourself.`,
-    `Bestie, ignoring financial stuff doesn't make it go away. It just makes it bigger, scarier, and more expensive. You are literally paying a procrastination tax on top of your actual taxes.`,
+    `You are letting the government keep your money because you won't sit down for 45 minutes. That's a crime.`,
+    `Ignoring financial stuff doesn't make it go away. It just makes it bigger, scarier, and more expensive. You are literally paying a procrastination tax on top of your actual taxes.`,
     `Your bank account is out here suffering while you "don't feel like dealing with it." Feel like it. For your wallet's sake.`,
-    `Every day you put this off is a day you're choosing stress over relief. The form is not that long. The website is not that complicated. You are the only obstacle.`,
-    `The audacity of letting money stress you out but also not doing the one thing that fixes it. Sit down. Open the tab. Do the thing.`,
-    `Future you — the one who filed on time, got the refund, and slept peacefully — is begging you to start right now.`,
+    `In this econonmy???????`,
+    `In this job market??????? You tripping`,
   ],
 
   // --- EXERCISE: gym, running, yoga, walking, working out ---
   'exercise|workout|gym|run|running|yoga|walk|walking|pilates|lift|lifting|spin|cycling': [
-    `You paid for that gym membership. It is sitting there. Judging you. Every. Single. Month.`,
     'Get the FUCK UP!',
+    `The lion does not concern himself with lazy people`,
     `The version of you that works out regularly is not a different person — it's just you, but you actually went. That's literally all it takes.`,
     `You're going to feel SO good after. You know this. You've done it before. So why are you lying on the couch like you don't know this?`,
     `Your body is a temple and right now you're treating it like a storage unit. Go move it. It doesn't even have to be that long.`,
-    `Imagine being this close to the endorphins and just... not taking them. Free mood boost. Right there. Just a workout away.`,
     `You said "I'll go tomorrow" yesterday. And the day before. Tomorrow is a myth. The gym is real. Go.`,
   ],
 
   // --- SCHOOL: studying, homework, essays, projects, exams ---
   'study|studying|exam|test|homework|assignment|essay|paper|project|presentation|thesis|dissertation|read|reading|class|course': [
-    `That assignment is not going to write itself. Trust me. I would know. It's been waiting for you for days and it has not moved one inch.`,
-    `You're going to have to do it anyway. The only question is whether you do it with time to breathe or at 3am in a full panic spiral. Choose wisely.`,
-    `The grade you want and the effort you're currently putting in are not on speaking terms. Time to reintroduce them.`,
-    `Bestie, "I work better under pressure" is something people say when they've never actually tried NOT being under pressure. Try it. Start now.`,
-    `Your professor is not thinking about you. Your grade, however, very much is. Go earn it.`,
-    `Every hour you avoid this, the task gets scarier in your head and no smaller in reality. Just open the doc. That's step one.`,
-    `Future you — sitting in that exam, or turning in that paper — is entirely depending on present you. Don't let them down for a TikTok scroll session.`,
+    `Don't let a nepo baby future evil consultant outwork you, get that bread`,
+    `Turn the Clairo off and go do your homework`,
   ],
 
   // --- CLEANING: room, laundry, dishes, organizing ---
   'clean|cleaning|room|apartment|house|tidy|organize|mess|laundry|dishes|wash|washing|vacuum|declutter|trash|folding': [
-    `Can't bring a bad bitch back to a hoarder's house, lock in`,
+    `Can't bring a bad bitch back to a mess, lock in`,
     `Ewwwwwwwwwwwwwwwww`,
   ],
 
   // --- MISC: catch-all for everything else ---
   'default': [
-    `You've been "about to start" {task} for how long now? At this point, your procrastination deserves its own LinkedIn profile. It has more experience than you.`,
+    `You've been "about to start" {task} for how long now?`,
     `Charlie Donovan golfs 24/7 and still gets {task} done. What’s your excuse?`,
     `Get the FUCK UP!`,
     `Do {task} now or venmo Nikki $20...GO GO GO`,
@@ -71,11 +65,8 @@ const closers = [
   "you've literally survived worse. go do it.",
   "it's going to feel SO good when it's done. trust.",
   "future you is already saying thank you.",
-  "one step at a time. you've SO got this.",
-  "the hardest part is starting. everything after that is momentum.",
-  "done is better than perfect. always.",
-  "you're not lazy — you were just recharging. now GO.",
-  "remember: 10 minutes of actually doing > 3 hours of dreading.",
+  "one step at a time. you've got this.",
+  "complete these tasks or send AIPAC $20...GO GO GO",
 ];
 
 // ---- Task Breakdown Knowledge Base ----
@@ -100,10 +91,10 @@ interface SavedTask {
 }
 
 const PRIORITIES: { value: Priority; emoji: string; label: string }[] = [
-  { value: 'urgent', emoji: '🔥', label: 'urgent' },
-  { value: 'high',   emoji: '⚡', label: 'high'   },
-  { value: 'medium', emoji: '📌', label: 'medium' },
-  { value: 'low',    emoji: '🌱', label: 'low'    },
+  { value: 'urgent', emoji: '', label: 'urgent' },
+  { value: 'high',   emoji: '', label: 'high'   },
+  { value: 'medium', emoji: '', label: 'medium' },
+  { value: 'low',    emoji: '', label: 'low'    },
 ];
 const TIMES: { value: TimeEstimate; label: string }[] = [
   { value: '10m',  label: '10 min' },
@@ -325,6 +316,9 @@ export default function HomePage() {
   const [savedTasks, setSavedTasks] = useState<SavedTask[]>([]);
   const [savingStep, setSavingStep] = useState<SavingStep | null>(null);
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
+  const [userName, setUserName] = useState('');
+  const [showNamePrompt, setShowNamePrompt] = useState(false);
+  const [nameInput, setNameInput] = useState('');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
@@ -332,11 +326,17 @@ export default function HomePage() {
   const currentTask = useRef('');
   const { dark, toggle } = useDarkMode();
 
-  // Persist task list in localStorage
+  // Persist task list + name in localStorage
   useEffect(() => {
     try {
       const stored = localStorage.getItem('git-tasklist');
       if (stored) setSavedTasks(JSON.parse(stored));
+      const storedName = localStorage.getItem('git-username');
+      if (storedName) {
+        setUserName(storedName);
+      } else {
+        setShowNamePrompt(true);
+      }
     } catch {}
   }, []);
   useEffect(() => {
@@ -460,6 +460,7 @@ export default function HomePage() {
 
   return (
     <>
+      <div className="relative">
       {/* Confetti canvas */}
       <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-50 w-full h-full" />
 
@@ -496,10 +497,7 @@ export default function HomePage() {
           <div className="w-[90vw] h-[90vw] max-w-[900px] max-h-[900px] rounded-full bg-[radial-gradient(ellipse_at_center,rgba(134,239,172,0.6),rgba(110,231,183,0.35)_40%,transparent_72%)] blur-2xl dark:opacity-35" />
         </div>
 
-        {/* Small site label — top left like inspo */}
-        <div className="relative z-10 px-8 pt-7">
-          <span className="text-xs font-semibold tracking-widest text-zinc-400 dark:text-zinc-500 uppercase">by N2K</span>
-        </div>
+
 
         {/* Hero text — shared hover zone, starts scattered, gathers on hover */}
         <div
@@ -508,6 +506,14 @@ export default function HomePage() {
           onMouseLeave={() => setHeroHovered(false)}
         >
           <div className="w-full overflow-visible">
+            {userName && (
+              <TextDisperse
+                scattered={!heroHovered}
+                className="text-[9vw] font-bold text-zinc-900 dark:text-zinc-50 tracking-[-0.03em] leading-none select-none [font-family:var(--font-display)]"
+              >
+                {`${userName},`}
+              </TextDisperse>
+            )}
             <TextDisperse
               scattered={!heroHovered}
               className="text-[9vw] font-bold text-zinc-900 dark:text-zinc-50 tracking-[-0.03em] leading-none select-none [font-family:var(--font-display)]"
@@ -521,16 +527,10 @@ export default function HomePage() {
             animate={{ opacity: heroHovered ? 1 : 0.5 }}
             transition={{ duration: 0.4 }}
           >
-            complete the tasks you keep avoiding.{' '}
-            <span className="text-emerald-600 dark:text-emerald-400 font-semibold">no more excuses.</span>
+            the to-do list that tells you where to start.<br />
+            <span className="text-emerald-600 dark:text-emerald-400 font-semibold">we do the thinking, so you can focus on doing.</span>
           </motion.p>
 
-          {/* Tags row */}
-          <div className="flex items-center gap-3 mt-10">
-            <span className="text-xs font-semibold tracking-wider text-zinc-400 dark:text-zinc-500">Procrastination.</span>
-            <span className="text-xs font-semibold tracking-wider text-zinc-400 dark:text-zinc-500">Motivation.</span>
-            <span className="text-xs font-semibold tracking-wider text-zinc-400 dark:text-zinc-500">Done.</span>
-          </div>
         </div>
 
         {/* Scroll indicator */}
@@ -546,8 +546,9 @@ export default function HomePage() {
       </section>
 
       {/* ===== TASK INPUT SECTION ===== */}
-      <section id="input" className="relative min-h-screen flex flex-col items-center justify-center px-4 py-20 bg-background">
-        <div className="w-full max-w-xl mx-auto">
+      <section id="input" className="relative isolate min-h-screen flex flex-col items-center justify-center px-4 py-20 bg-background">
+        <ScribbleBg />
+        <div className="w-full max-w-xl mx-auto relative z-10">
           {/* Input area */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -751,9 +752,9 @@ export default function HomePage() {
             transition={{ duration: 0.4 }}
             className="bg-background px-4 py-16"
           >
-            <div className="w-full max-w-xl mx-auto space-y-5">
+            <div className="w-full max-w-xl mx-auto space-y-2">
               <div className="flex items-center justify-between mb-2">
-                <h2 className="text-xl font-black text-foreground tracking-tight">my task list</h2>
+                <h2 className="text-base font-medium text-zinc-400 dark:text-zinc-500 tracking-wide">my task list</h2>
                 <span className="text-xs font-bold text-muted-foreground">{savedTasks.length} task{savedTasks.length !== 1 ? 's' : ''}</span>
               </div>
 
@@ -771,7 +772,7 @@ export default function HomePage() {
                     initial={{ opacity: 0, y: 16 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, x: -20 }}
-                    className="bg-card border-2 border-border rounded-2xl p-5 shadow-sm"
+                    className="bg-card border-2 border-border rounded-lg p-5 shadow-sm"
                   >
                     {/* Header */}
                     <button
@@ -783,13 +784,36 @@ export default function HomePage() {
                       className="w-full flex items-start justify-between gap-3 text-left"
                     >
                       <div className="flex-1 min-w-0">
-                        <p
-                          contentEditable
-                          suppressContentEditableWarning
-                          onBlur={e => handleEditTaskName(t.id, e.currentTarget.textContent || t.task)}
-                          onClick={e => e.stopPropagation()}
-                          className="font-black text-foreground text-base outline-none cursor-text rounded px-1 -mx-1 hover:bg-muted/40 focus:bg-muted/40"
-                        >{t.task}</p>
+                        <div className="relative inline-block max-w-full">
+                          <motion.svg
+                            width="100%"
+                            height="20"
+                            viewBox="0 0 340 32"
+                            preserveAspectRatio="none"
+                            className="absolute left-0 top-1/2 -translate-y-1/2 pointer-events-none z-20 w-full"
+                          >
+                            <motion.path
+                              d="M 10 16.91 s 79.8 -11.36 98.1 -11.34 c 22.2 0.02 -47.82 14.25 -33.39 22.02 c 12.61 6.77 124.18 -27.98 133.31 -17.28 c 7.52 8.38 -26.8 20.02 4.61 22.05 c 24.55 1.93 113.37 -20.36 113.37 -20.36"
+                              vectorEffect="non-scaling-stroke"
+                              strokeWidth={2}
+                              strokeLinecap="round"
+                              strokeMiterlimit={10}
+                              fill="none"
+                              animate={{ pathLength: allDone ? 1 : 0, opacity: allDone ? 1 : 0 }}
+                              transition={{ pathLength: { duration: 0.8, ease: 'easeInOut' }, opacity: { duration: 0.01, delay: allDone ? 0 : 0.8 } }}
+                              className="stroke-zinc-400 dark:stroke-zinc-500"
+                            />
+                          </motion.svg>
+                          <motion.p
+                            animate={{ opacity: allDone ? 0.4 : 1 }}
+                            transition={{ duration: 0.3 }}
+                            contentEditable
+                            suppressContentEditableWarning
+                            onBlur={e => handleEditTaskName(t.id, e.currentTarget.textContent || t.task)}
+                            onClick={e => e.stopPropagation()}
+                            className="font-bold text-foreground text-sm outline-none cursor-text rounded px-1 -mx-1 hover:bg-muted/40 focus:bg-muted/40"
+                          >{t.task}</motion.p>
+                        </div>
                         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                           <span className={`text-xs font-bold ${PRIORITY_COLOR[t.priority]}`}>
                             {PRIORITIES.find(p => p.value === t.priority)?.emoji} {t.priority}
@@ -911,22 +935,23 @@ export default function HomePage() {
                       )}
                     </AnimatePresence>
 
-                    {/* Closer shown when all done */}
-                    <AnimatePresence>
-                      {allDone && (
-                        <motion.p
-                          initial={{ opacity: 0, y: 6 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0 }}
-                          className="text-emerald-600 dark:text-emerald-400 font-bold text-sm italic mt-4 text-center"
-                        >
-                          {t.closer}
-                        </motion.p>
-                      )}
-                    </AnimatePresence>
                   </motion.div>
                 );
               })}
+
+              {/* Closer — shown below all tasks when any task is fully done */}
+              <AnimatePresence>
+                {savedTasks.some(t => t.checkedSteps.length > 0 && t.checkedSteps.every(Boolean)) && (
+                  <motion.p
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    className="text-emerald-600 dark:text-emerald-400 font-bold text-sm italic text-center pt-4"
+                  >
+                    {savedTasks.find(t => t.checkedSteps.length > 0 && t.checkedSteps.every(Boolean))?.closer}
+                  </motion.p>
+                )}
+              </AnimatePresence>
             </div>
           </motion.section>
         )}
@@ -950,6 +975,62 @@ export default function HomePage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ===== NAME PROMPT MODAL ===== */}
+      <AnimatePresence>
+        {showNamePrompt && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-white dark:bg-zinc-950"
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 24 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 12 }}
+              transition={{ duration: 0.35, ease: 'easeOut' }}
+              className="w-full max-w-md mx-8 text-center"
+            >
+              <h3 className="text-4xl md:text-5xl font-bold text-foreground mb-10 [font-family:var(--font-display)]">what should we call you?</h3>
+              <input
+                autoFocus
+                type="text"
+                value={nameInput}
+                onChange={e => setNameInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    const name = nameInput.trim();
+                    if (name) { setUserName(name); localStorage.setItem('git-username', name); }
+                    setShowNamePrompt(false);
+                  }
+                }}
+                placeholder="your name"
+                className="w-full bg-transparent border-b-2 border-zinc-200 dark:border-zinc-700 focus:border-emerald-400 outline-none text-foreground text-2xl font-medium text-center py-3 transition-colors placeholder:text-zinc-300 dark:placeholder:text-zinc-600 caret-emerald-500 mb-12"
+              />
+              <div className="flex items-center justify-center gap-8">
+                <button
+                  onClick={() => setShowNamePrompt(false)}
+                  className="text-sm text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                >
+                  skip
+                </button>
+                <button
+                  onClick={() => {
+                    const name = nameInput.trim();
+                    if (name) { setUserName(name); localStorage.setItem('git-username', name); }
+                    setShowNamePrompt(false);
+                  }}
+                  className="text-sm font-semibold text-emerald-600 hover:text-emerald-500 dark:text-emerald-400 transition-colors"
+                >
+                  continue →
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      </div>
     </>
   );
 }
