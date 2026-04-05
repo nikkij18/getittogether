@@ -84,6 +84,43 @@ interface Step {
   note: string | null;
 }
 
+type Priority = 'urgent' | 'high' | 'medium' | 'low';
+type TimeEstimate = '10m' | '30m' | '1h' | '2h' | '5h+';
+type SavingStep = { phase: 'priority' } | { phase: 'time'; priority: Priority };
+
+interface SavedTask {
+  id: string;
+  task: string;
+  roast: string;
+  steps: Step[];
+  closer: string;
+  checkedSteps: boolean[];
+  priority: Priority;
+  timeEstimate: TimeEstimate;
+}
+
+const PRIORITIES: { value: Priority; emoji: string; label: string }[] = [
+  { value: 'urgent', emoji: '🔥', label: 'urgent' },
+  { value: 'high',   emoji: '⚡', label: 'high'   },
+  { value: 'medium', emoji: '📌', label: 'medium' },
+  { value: 'low',    emoji: '🌱', label: 'low'    },
+];
+const TIMES: { value: TimeEstimate; label: string }[] = [
+  { value: '10m',  label: '10 min' },
+  { value: '30m',  label: '30 min' },
+  { value: '1h',   label: '1 hr'   },
+  { value: '2h',   label: '2 hrs'  },
+  { value: '5h+',  label: '5+ hrs' },
+];
+const PRIORITY_WEIGHT: Record<Priority, number>      = { urgent: 4, high: 3, medium: 2, low: 1 };
+const TIME_WEIGHT:     Record<TimeEstimate, number>  = { '10m': 1, '30m': 2, '1h': 3, '2h': 4, '5h+': 5 };
+const PRIORITY_COLOR:  Record<Priority, string> = {
+  urgent: 'text-red-500',
+  high:   'text-orange-500',
+  medium: 'text-yellow-600',
+  low:    'text-emerald-500',
+};
+
 const taskBreakdowns: Record<string, Step[]> = {
   'financial aid|fafsa|scholarship|grant': [
     { text: "Gather your documents first — tax returns, W-2s, bank statements. Pile 'em up.", note: "check last year's return for reference" },
@@ -285,11 +322,26 @@ export default function HomePage() {
   const [copied, setCopied] = useState(false);
   const [heroHovered, setHeroHovered] = useState(false);
   const [checkedSteps, setCheckedSteps] = useState<boolean[]>([]);
+  const [savedTasks, setSavedTasks] = useState<SavedTask[]>([]);
+  const [savingStep, setSavingStep] = useState<SavingStep | null>(null);
+  const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
+  const taskListRef = useRef<HTMLDivElement>(null);
   const currentTask = useRef('');
   const { dark, toggle } = useDarkMode();
+
+  // Persist task list in localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('git-tasklist');
+      if (stored) setSavedTasks(JSON.parse(stored));
+    } catch {}
+  }, []);
+  useEffect(() => {
+    localStorage.setItem('git-tasklist', JSON.stringify(savedTasks));
+  }, [savedTasks]);
 
   const doRoast = useCallback((taskText: string) => {
     const trimmed = taskText.trim();
@@ -329,7 +381,57 @@ export default function HomePage() {
     }, 100);
   }, []);
 
-  // Fire confetti when every step is checked off
+  const handleSaveTask = useCallback((taskName: string, taskRoast: string, taskSteps: Step[], taskCloser: string, priority: Priority, timeEstimate: TimeEstimate) => {
+    setSavedTasks(prev => {
+      const newTask: SavedTask = {
+        id: Date.now().toString(),
+        task: taskName,
+        roast: taskRoast,
+        steps: taskSteps,
+        closer: taskCloser,
+        checkedSteps: new Array(taskSteps.length).fill(false),
+        priority,
+        timeEstimate,
+      };
+      return [...prev, newTask];
+    });
+    setSavingStep(null);
+    setShowResults(false);
+    setTask('');
+    setCheckedSteps([]);
+    setTimeout(() => {
+      taskListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 200);
+  }, []);
+
+  const handleEditTaskName = useCallback((taskId: string, newName: string) => {
+    setSavedTasks(prev => prev.map(t => t.id === taskId ? { ...t, task: newName } : t));
+  }, []);
+
+  const handleEditStep = useCallback((taskId: string, stepIdx: number, newText: string) => {
+    setSavedTasks(prev => prev.map(t => {
+      if (t.id !== taskId) return t;
+      const newSteps = [...t.steps];
+      newSteps[stepIdx] = { ...newSteps[stepIdx], text: newText };
+      return { ...t, steps: newSteps };
+    }));
+  }, []);
+
+  const handleToggleSavedStep = useCallback((taskId: string, stepIdx: number) => {
+    setSavedTasks(prev => prev.map(t => {
+      if (t.id !== taskId) return t;
+      const updated = [...t.checkedSteps];
+      updated[stepIdx] = !updated[stepIdx];
+      if (updated.every(Boolean) && canvasRef.current) fireConfetti(canvasRef.current);
+      return { ...t, checkedSteps: updated };
+    }));
+  }, []);
+
+  const handleDeleteTask = useCallback((taskId: string) => {
+    setSavedTasks(prev => prev.filter(t => t.id !== taskId));
+  }, []);
+
+  // Fire confetti when every step in the preview is checked off
   useEffect(() => {
     if (checkedSteps.length > 0 && checkedSteps.every(Boolean)) {
       if (canvasRef.current) fireConfetti(canvasRef.current);
@@ -369,7 +471,7 @@ export default function HomePage() {
 
         {/* Small site label — top left like inspo */}
         <div className="relative z-10 px-8 pt-7">
-          <span className="text-xs font-semibold tracking-widest text-zinc-400 dark:text-zinc-500 uppercase">Roast My Task</span>
+          <span className="text-xs font-semibold tracking-widest text-zinc-400 dark:text-zinc-500 uppercase">N2K Studios</span>
         </div>
 
         {/* Hero text — shared hover zone, starts scattered, gathers on hover */}
@@ -393,13 +495,13 @@ export default function HomePage() {
             transition={{ duration: 0.4 }}
           >
             tell me the task you keep avoiding.{' '}
-            <span className="text-emerald-600 dark:text-emerald-400 font-semibold">i&apos;ll bully you into doing it.</span>
+            <span className="text-emerald-600 dark:text-emerald-400 font-semibold">no more excuses.</span>
           </motion.p>
 
           {/* Tags row */}
-          <div className="flex items-center gap-6 mt-10">
+          <div className="flex items-center gap-3 mt-10">
             <span className="text-xs font-semibold tracking-wider text-zinc-400 dark:text-zinc-500">Procrastination.</span>
-            <span className="text-xs font-semibold tracking-wider text-zinc-400 dark:text-zinc-500">Redemption.</span>
+            <span className="text-xs font-semibold tracking-wider text-zinc-400 dark:text-zinc-500">Motivation.</span>
             <span className="text-xs font-semibold tracking-wider text-zinc-400 dark:text-zinc-500">Done.</span>
           </div>
         </div>
@@ -467,27 +569,15 @@ export default function HomePage() {
                 transition={{ duration: 0.5, ease: 'easeOut' }}
                 className="space-y-5"
               >
-                {/* Roast card */}
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.4, delay: 0.1 }}
-                  className="bg-card border-2 border-orange-200 dark:border-orange-900/50 rounded-2xl p-6 shadow-lg"
-                >
-                  <p className="text-foreground font-bold text-base md:text-lg leading-relaxed">{roast}</p>
-                </motion.div>
-
                 {/* Steps card */}
                 <motion.div
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.4, delay: 0.25 }}
+                  transition={{ duration: 0.4, delay: 0.1 }}
                   className="bg-card border-2 border-emerald-200 dark:border-emerald-900/50 rounded-2xl p-6 shadow-lg"
                 >
-                  <div className="flex items-center gap-2 mb-4">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                    <span className="text-xs font-extrabold uppercase tracking-wider text-muted-foreground">ok but here&apos;s how to actually do it</span>
-                  </div>
+                  <p className="text-foreground font-bold text-base md:text-lg leading-relaxed mb-5">{roast}</p>
+                  <div className="border-t border-border mb-4" />
                   <ol className="space-y-4">
                     {steps.map((step, i) => {
                       const isChecked = !!checkedSteps[i];
@@ -552,31 +642,59 @@ export default function HomePage() {
                   </ol>
                 </motion.div>
 
-                {/* Action buttons */}
+                {/* Action buttons / save picker */}
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.6, duration: 0.3 }}
-                  className="flex gap-3 flex-wrap"
+                  className="space-y-3"
                 >
-                  <button
-                    onClick={handleCopy}
-                    className="flex-1 min-w-fit px-4 py-3 bg-card border-2 border-border rounded-xl text-sm font-bold text-foreground transition-all hover:border-muted-foreground hover:bg-secondary hover:-translate-y-0.5"
-                  >
-                    {copied ? 'copied!' : 'copy steps'}
-                  </button>
-                  <button
-                    onClick={() => doRoast(currentTask.current)}
-                    className="flex-1 min-w-fit px-4 py-3 bg-card border-2 border-border rounded-xl text-sm font-bold text-foreground transition-all hover:border-muted-foreground hover:bg-secondary hover:-translate-y-0.5"
-                  >
-                    roast me again
-                  </button>
-                  <button
-                    onClick={handleNew}
-                    className="flex-1 min-w-fit px-4 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 border-2 border-transparent rounded-xl text-sm font-bold text-white transition-all hover:shadow-lg hover:-translate-y-0.5"
-                  >
-                    new task
-                  </button>
+                  <AnimatePresence mode="wait">
+                    {savingStep === null ? (
+                      <motion.div key="buttons" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex gap-3 flex-wrap">
+                        <button onClick={handleCopy} className="flex-1 min-w-fit px-4 py-3 bg-card border-2 border-border rounded-xl text-sm font-bold text-foreground transition-all hover:border-muted-foreground hover:bg-secondary hover:-translate-y-0.5">
+                          {copied ? 'copied!' : 'copy steps'}
+                        </button>
+                        <button onClick={() => setSavingStep({ phase: 'priority' })} className="flex-1 min-w-fit px-4 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 border-2 border-transparent rounded-xl text-sm font-bold text-white transition-all hover:shadow-lg hover:-translate-y-0.5">
+                          + save to list
+                        </button>
+                        <button onClick={handleNew} className="flex-1 min-w-fit px-4 py-3 bg-card border-2 border-border rounded-xl text-sm font-bold text-foreground transition-all hover:border-muted-foreground hover:bg-secondary hover:-translate-y-0.5">
+                          new task
+                        </button>
+                      </motion.div>
+                    ) : savingStep.phase === 'priority' ? (
+                      <motion.div key="priority" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="bg-card border-2 border-border rounded-xl p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-extrabold uppercase tracking-wider text-muted-foreground">how urgent is it?</span>
+                          <button onClick={() => setSavingStep(null)} className="text-muted-foreground hover:text-foreground text-xs">✕</button>
+                        </div>
+                        <div className="flex gap-2 flex-wrap">
+                          {PRIORITIES.map(p => (
+                            <button key={p.value} onClick={() => setSavingStep({ phase: 'time', priority: p.value })}
+                              className="flex items-center gap-1.5 px-4 py-2 rounded-full border-2 border-border bg-secondary text-sm font-bold text-foreground hover:border-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950 transition-all">
+                              <span>{p.emoji}</span><span>{p.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </motion.div>
+                    ) : (
+                      <motion.div key="time" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="bg-card border-2 border-border rounded-xl p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-extrabold uppercase tracking-wider text-muted-foreground">how long will it take?</span>
+                          <button onClick={() => setSavingStep(null)} className="text-muted-foreground hover:text-foreground text-xs">✕</button>
+                        </div>
+                        <div className="flex gap-2 flex-wrap">
+                          {TIMES.map(t => (
+                            <button key={t.value}
+                              onClick={() => handleSaveTask(currentTask.current, roast, steps, closer, savingStep.priority, t.value)}
+                              className="px-4 py-2 rounded-full border-2 border-border bg-secondary text-sm font-bold text-foreground hover:border-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950 transition-all">
+                              {t.label}
+                            </button>
+                          ))}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </motion.div>
 
                 {/* Motivational closer */}
@@ -593,6 +711,187 @@ export default function HomePage() {
           </AnimatePresence>
         </div>
       </section>
+
+      {/* ===== TASK LIST SECTION ===== */}
+      <AnimatePresence>
+        {savedTasks.length > 0 && (
+          <motion.section
+            ref={taskListRef}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            transition={{ duration: 0.4 }}
+            className="bg-background px-4 py-16"
+          >
+            <div className="w-full max-w-xl mx-auto space-y-5">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-xl font-black text-foreground tracking-tight">my task list</h2>
+                <span className="text-xs font-bold text-muted-foreground">{savedTasks.length} task{savedTasks.length !== 1 ? 's' : ''}</span>
+              </div>
+
+              {[...savedTasks].sort((a, b) => {
+                const scoreA = PRIORITY_WEIGHT[a.priority] * 5 - TIME_WEIGHT[a.timeEstimate];
+                const scoreB = PRIORITY_WEIGHT[b.priority] * 5 - TIME_WEIGHT[b.timeEstimate];
+                return scoreB - scoreA;
+              }).map(t => {
+                const doneCount = t.checkedSteps.filter(Boolean).length;
+                const allDone = doneCount === t.steps.length;
+                return (
+                  <motion.div
+                    key={t.id}
+                    layout
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    className="bg-card border-2 border-border rounded-2xl p-5 shadow-sm"
+                  >
+                    {/* Header */}
+                    <button
+                      onClick={() => setExpandedTasks(prev => {
+                        const next = new Set(prev);
+                        next.has(t.id) ? next.delete(t.id) : next.add(t.id);
+                        return next;
+                      })}
+                      className="w-full flex items-start justify-between gap-3 text-left"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="font-black text-foreground text-base">{t.task}</p>
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          <span className={`text-xs font-bold ${PRIORITY_COLOR[t.priority]}`}>
+                            {PRIORITIES.find(p => p.value === t.priority)?.emoji} {t.priority}
+                          </span>
+                          <span className="text-xs text-muted-foreground">·</span>
+                          <span className="text-xs text-muted-foreground font-medium">{t.timeEstimate}</span>
+                          <span className="text-xs text-muted-foreground">·</span>
+                          <span className="text-xs text-muted-foreground font-medium">
+                            {allDone ? '✓ all done!' : `${doneCount}/${t.steps.length} steps`}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
+                        <motion.svg
+                          animate={{ rotate: expandedTasks.has(t.id) ? 180 : 0 }}
+                          transition={{ duration: 0.25, ease: 'easeInOut' }}
+                          width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                          className="text-muted-foreground"
+                        >
+                          <path d="M6 9l6 6 6-6" />
+                        </motion.svg>
+                        <span
+                          onClick={e => { e.stopPropagation(); handleDeleteTask(t.id); }}
+                          role="button"
+                          className="text-muted-foreground hover:text-foreground transition-colors"
+                          aria-label="Remove task"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </span>
+                      </div>
+                    </button>
+
+                    {/* Collapsible content */}
+                    <AnimatePresence initial={false}>
+                      {expandedTasks.has(t.id) && (
+                        <motion.div
+                          key="content"
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.3, ease: 'easeInOut' }}
+                          className="overflow-hidden"
+                        >
+                          <div className="pt-4 space-y-4">
+                            {/* Editable task name */}
+                            <p
+                              contentEditable
+                              suppressContentEditableWarning
+                              onBlur={e => handleEditTaskName(t.id, e.currentTarget.textContent || t.task)}
+                              onClick={e => e.stopPropagation()}
+                              className="font-black text-foreground text-base outline-none cursor-text rounded px-1 -mx-1 hover:bg-muted/40 focus:bg-muted/40 hidden"
+                            >{t.task}</p>
+
+                            {/* Progress bar */}
+                            <div className="w-full h-1 bg-border rounded-full overflow-hidden">
+                              <motion.div
+                                className="h-full bg-gradient-to-r from-emerald-400 to-teal-500 rounded-full"
+                                animate={{ width: `${(doneCount / t.steps.length) * 100}%` }}
+                                transition={{ duration: 0.4, ease: 'easeOut' }}
+                              />
+                            </div>
+
+                            {/* Checklist with scribble */}
+                            <ol className="space-y-3">
+                              {t.steps.map((step, i) => {
+                                const isChecked = !!t.checkedSteps[i];
+                                return (
+                                  <li key={i} className="flex gap-3 items-start">
+                                    <Checkbox
+                                      checked={isChecked}
+                                      onCheckedChange={() => handleToggleSavedStep(t.id, i)}
+                                      className="mt-0.5 flex-shrink-0"
+                                    />
+                                    <div className="relative flex-1">
+                                      <motion.svg
+                                        width="100%"
+                                        height="32"
+                                        viewBox="0 0 340 32"
+                                        preserveAspectRatio="none"
+                                        className="absolute left-0 top-1/2 -translate-y-1/2 pointer-events-none z-20 w-full h-8"
+                                      >
+                                        <motion.path
+                                          d="M 10 16.91 s 79.8 -11.36 98.1 -11.34 c 22.2 0.02 -47.82 14.25 -33.39 22.02 c 12.61 6.77 124.18 -27.98 133.31 -17.28 c 7.52 8.38 -26.8 20.02 4.61 22.05 c 24.55 1.93 113.37 -20.36 113.37 -20.36"
+                                          vectorEffect="non-scaling-stroke"
+                                          strokeWidth={2}
+                                          strokeLinecap="round"
+                                          strokeMiterlimit={10}
+                                          fill="none"
+                                          animate={{ pathLength: isChecked ? 1 : 0, opacity: isChecked ? 1 : 0 }}
+                                          transition={{ pathLength: { duration: 0.8, ease: 'easeInOut' }, opacity: { duration: 0.01, delay: isChecked ? 0 : 0.8 } }}
+                                          className="stroke-zinc-400 dark:stroke-zinc-500"
+                                        />
+                                      </motion.svg>
+                                      <motion.span
+                                        animate={{ opacity: isChecked ? 0.4 : 1 }}
+                                        transition={{ duration: 0.3 }}
+                                        contentEditable
+                                        suppressContentEditableWarning
+                                        onBlur={e => handleEditStep(t.id, i, e.currentTarget.textContent || step.text)}
+                                        className="text-foreground font-semibold text-sm leading-relaxed block outline-none cursor-text rounded px-1 -mx-1 hover:bg-muted/40 focus:bg-muted/40"
+                                      >
+                                        {step.text}
+                                      </motion.span>
+                                      {step.note && (
+                                        <span className="block text-xs text-muted-foreground italic mt-0.5">{step.note}</span>
+                                      )}
+                                    </div>
+                                  </li>
+                                );
+                              })}
+                            </ol>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    {/* Closer shown when all done */}
+                    <AnimatePresence>
+                      {allDone && (
+                        <motion.p
+                          initial={{ opacity: 0, y: 6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0 }}
+                          className="text-emerald-600 dark:text-emerald-400 font-bold text-sm italic mt-4 text-center"
+                        >
+                          {t.closer}
+                        </motion.p>
+                      )}
+                    </AnimatePresence>
+                  </motion.div>
+                );
+              })}
+            </div>
+          </motion.section>
+        )}
+      </AnimatePresence>
 
       {/* Footer */}
       <footer className="text-center py-6 text-muted-foreground text-sm font-semibold bg-background">
