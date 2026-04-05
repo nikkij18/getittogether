@@ -6,6 +6,7 @@ import { TextDisperse } from '@/components/ui/text-disperse';
 import { Typewriter } from '@/components/ui/typewriter';
 import MorphingArrowButton from '@/components/ui/morphing-arrow-button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { ScribbleBg } from '@/components/ui/scribble-bg';
 
 // ---- Roast Templates ----
 
@@ -44,10 +45,10 @@ interface SavedTask {
 }
 
 const PRIORITIES: { value: Priority; emoji: string; label: string }[] = [
-  { value: 'urgent', emoji: '🔥', label: 'urgent' },
-  { value: 'high',   emoji: '⚡', label: 'high'   },
-  { value: 'medium', emoji: '📌', label: 'medium' },
-  { value: 'low',    emoji: '🌱', label: 'low'    },
+  { value: 'urgent', emoji: '', label: 'urgent' },
+  { value: 'high',   emoji: '', label: 'high'   },
+  { value: 'medium', emoji: '', label: 'medium' },
+  { value: 'low',    emoji: '', label: 'low'    },
 ];
 const TIMES: { value: TimeEstimate; label: string }[] = [
   { value: '10m',  label: '10 min' },
@@ -269,6 +270,9 @@ export default function HomePage() {
   const [savedTasks, setSavedTasks] = useState<SavedTask[]>([]);
   const [savingStep, setSavingStep] = useState<SavingStep | null>(null);
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
+  const [userName, setUserName] = useState('');
+  const [showNamePrompt, setShowNamePrompt] = useState(false);
+  const [nameInput, setNameInput] = useState('');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
@@ -276,11 +280,17 @@ export default function HomePage() {
   const currentTask = useRef('');
   const { dark, toggle } = useDarkMode();
 
-  // Persist task list in localStorage
+  // Persist task list + name in localStorage
   useEffect(() => {
     try {
       const stored = localStorage.getItem('git-tasklist');
       if (stored) setSavedTasks(JSON.parse(stored));
+      const storedName = localStorage.getItem('git-username');
+      if (storedName) {
+        setUserName(storedName);
+      } else {
+        setShowNamePrompt(true);
+      }
     } catch {}
   }, []);
   useEffect(() => {
@@ -404,6 +414,7 @@ export default function HomePage() {
 
   return (
     <>
+      <div className="relative">
       {/* Confetti canvas */}
       <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-50 w-full h-full" />
 
@@ -440,10 +451,7 @@ export default function HomePage() {
           <div className="w-[90vw] h-[90vw] max-w-[900px] max-h-[900px] rounded-full bg-[radial-gradient(ellipse_at_center,rgba(134,239,172,0.6),rgba(110,231,183,0.35)_40%,transparent_72%)] blur-2xl dark:opacity-35" />
         </div>
 
-        {/* Small site label — top left like inspo */}
-        <div className="relative z-10 px-8 pt-7">
-          <span className="text-xs font-semibold tracking-widest text-zinc-400 dark:text-zinc-500 uppercase">by N2K</span>
-        </div>
+
 
         {/* Hero text — shared hover zone, starts scattered, gathers on hover */}
         <div
@@ -452,6 +460,14 @@ export default function HomePage() {
           onMouseLeave={() => setHeroHovered(false)}
         >
           <div className="w-full overflow-visible">
+            {userName && (
+              <TextDisperse
+                scattered={!heroHovered}
+                className="text-[9vw] font-bold text-zinc-900 dark:text-zinc-50 tracking-[-0.03em] leading-none select-none [font-family:var(--font-display)]"
+              >
+                {`${userName},`}
+              </TextDisperse>
+            )}
             <TextDisperse
               scattered={!heroHovered}
               className="text-[9vw] font-bold text-zinc-900 dark:text-zinc-50 tracking-[-0.03em] leading-none select-none [font-family:var(--font-display)]"
@@ -465,16 +481,10 @@ export default function HomePage() {
             animate={{ opacity: heroHovered ? 1 : 0.5 }}
             transition={{ duration: 0.4 }}
           >
-            complete the tasks you keep avoiding.{' '}
-            <span className="text-emerald-600 dark:text-emerald-400 font-semibold">no more excuses.</span>
+            the to-do list that tells you where to start.<br />
+            <span className="text-emerald-600 dark:text-emerald-400 font-semibold">we do the thinking, so you can focus on doing.</span>
           </motion.p>
 
-          {/* Tags row */}
-          <div className="flex items-center gap-3 mt-10">
-            <span className="text-xs font-semibold tracking-wider text-zinc-400 dark:text-zinc-500">Procrastination.</span>
-            <span className="text-xs font-semibold tracking-wider text-zinc-400 dark:text-zinc-500">Motivation.</span>
-            <span className="text-xs font-semibold tracking-wider text-zinc-400 dark:text-zinc-500">Done.</span>
-          </div>
         </div>
 
         {/* Scroll indicator */}
@@ -490,8 +500,9 @@ export default function HomePage() {
       </section>
 
       {/* ===== TASK INPUT SECTION ===== */}
-      <section id="input" className="relative min-h-screen flex flex-col items-center justify-center px-4 py-20 bg-background">
-        <div className="w-full max-w-xl mx-auto">
+      <section id="input" className="relative isolate min-h-screen flex flex-col items-center justify-center px-4 py-20 bg-background">
+        <ScribbleBg />
+        <div className="w-full max-w-xl mx-auto relative z-10">
           {/* Input area */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -695,9 +706,9 @@ export default function HomePage() {
             transition={{ duration: 0.4 }}
             className="bg-background px-4 py-16"
           >
-            <div className="w-full max-w-xl mx-auto space-y-5">
+            <div className="w-full max-w-xl mx-auto space-y-2">
               <div className="flex items-center justify-between mb-2">
-                <h2 className="text-xl font-black text-foreground tracking-tight">my task list</h2>
+                <h2 className="text-base font-medium text-zinc-400 dark:text-zinc-500 tracking-wide">my task list</h2>
                 <span className="text-xs font-bold text-muted-foreground">{savedTasks.length} task{savedTasks.length !== 1 ? 's' : ''}</span>
               </div>
 
@@ -715,7 +726,7 @@ export default function HomePage() {
                     initial={{ opacity: 0, y: 16 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, x: -20 }}
-                    className="bg-card border-2 border-border rounded-2xl p-5 shadow-sm"
+                    className="bg-card border-2 border-border rounded-lg p-5 shadow-sm"
                   >
                     {/* Header */}
                     <button
@@ -727,13 +738,36 @@ export default function HomePage() {
                       className="w-full flex items-start justify-between gap-3 text-left"
                     >
                       <div className="flex-1 min-w-0">
-                        <p
-                          contentEditable
-                          suppressContentEditableWarning
-                          onBlur={e => handleEditTaskName(t.id, e.currentTarget.textContent || t.task)}
-                          onClick={e => e.stopPropagation()}
-                          className="font-black text-foreground text-base outline-none cursor-text rounded px-1 -mx-1 hover:bg-muted/40 focus:bg-muted/40"
-                        >{t.task}</p>
+                        <div className="relative inline-block max-w-full">
+                          <motion.svg
+                            width="100%"
+                            height="20"
+                            viewBox="0 0 340 32"
+                            preserveAspectRatio="none"
+                            className="absolute left-0 top-1/2 -translate-y-1/2 pointer-events-none z-20 w-full"
+                          >
+                            <motion.path
+                              d="M 10 16.91 s 79.8 -11.36 98.1 -11.34 c 22.2 0.02 -47.82 14.25 -33.39 22.02 c 12.61 6.77 124.18 -27.98 133.31 -17.28 c 7.52 8.38 -26.8 20.02 4.61 22.05 c 24.55 1.93 113.37 -20.36 113.37 -20.36"
+                              vectorEffect="non-scaling-stroke"
+                              strokeWidth={2}
+                              strokeLinecap="round"
+                              strokeMiterlimit={10}
+                              fill="none"
+                              animate={{ pathLength: allDone ? 1 : 0, opacity: allDone ? 1 : 0 }}
+                              transition={{ pathLength: { duration: 0.8, ease: 'easeInOut' }, opacity: { duration: 0.01, delay: allDone ? 0 : 0.8 } }}
+                              className="stroke-zinc-400 dark:stroke-zinc-500"
+                            />
+                          </motion.svg>
+                          <motion.p
+                            animate={{ opacity: allDone ? 0.4 : 1 }}
+                            transition={{ duration: 0.3 }}
+                            contentEditable
+                            suppressContentEditableWarning
+                            onBlur={e => handleEditTaskName(t.id, e.currentTarget.textContent || t.task)}
+                            onClick={e => e.stopPropagation()}
+                            className="font-bold text-foreground text-sm outline-none cursor-text rounded px-1 -mx-1 hover:bg-muted/40 focus:bg-muted/40"
+                          >{t.task}</motion.p>
+                        </div>
                         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                           <span className={`text-xs font-bold ${PRIORITY_COLOR[t.priority]}`}>
                             {PRIORITIES.find(p => p.value === t.priority)?.emoji} {t.priority}
@@ -855,22 +889,23 @@ export default function HomePage() {
                       )}
                     </AnimatePresence>
 
-                    {/* Closer shown when all done */}
-                    <AnimatePresence>
-                      {allDone && (
-                        <motion.p
-                          initial={{ opacity: 0, y: 6 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0 }}
-                          className="text-emerald-600 dark:text-emerald-400 font-bold text-sm italic mt-4 text-center"
-                        >
-                          {t.closer}
-                        </motion.p>
-                      )}
-                    </AnimatePresence>
                   </motion.div>
                 );
               })}
+
+              {/* Closer — shown below all tasks when any task is fully done */}
+              <AnimatePresence>
+                {savedTasks.some(t => t.checkedSteps.length > 0 && t.checkedSteps.every(Boolean)) && (
+                  <motion.p
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    className="text-emerald-600 dark:text-emerald-400 font-bold text-sm italic text-center pt-4"
+                  >
+                    {savedTasks.find(t => t.checkedSteps.length > 0 && t.checkedSteps.every(Boolean))?.closer}
+                  </motion.p>
+                )}
+              </AnimatePresence>
             </div>
           </motion.section>
         )}
@@ -894,6 +929,62 @@ export default function HomePage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ===== NAME PROMPT MODAL ===== */}
+      <AnimatePresence>
+        {showNamePrompt && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-white dark:bg-zinc-950"
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 24 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 12 }}
+              transition={{ duration: 0.35, ease: 'easeOut' }}
+              className="w-full max-w-md mx-8 text-center"
+            >
+              <h3 className="text-4xl md:text-5xl font-bold text-foreground mb-10 [font-family:var(--font-display)]">what should we call you?</h3>
+              <input
+                autoFocus
+                type="text"
+                value={nameInput}
+                onChange={e => setNameInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    const name = nameInput.trim();
+                    if (name) { setUserName(name); localStorage.setItem('git-username', name); }
+                    setShowNamePrompt(false);
+                  }
+                }}
+                placeholder="your name"
+                className="w-full bg-transparent border-b-2 border-zinc-200 dark:border-zinc-700 focus:border-emerald-400 outline-none text-foreground text-2xl font-medium text-center py-3 transition-colors placeholder:text-zinc-300 dark:placeholder:text-zinc-600 caret-emerald-500 mb-12"
+              />
+              <div className="flex items-center justify-center gap-8">
+                <button
+                  onClick={() => setShowNamePrompt(false)}
+                  className="text-sm text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                >
+                  skip
+                </button>
+                <button
+                  onClick={() => {
+                    const name = nameInput.trim();
+                    if (name) { setUserName(name); localStorage.setItem('git-username', name); }
+                    setShowNamePrompt(false);
+                  }}
+                  className="text-sm font-semibold text-emerald-600 hover:text-emerald-500 dark:text-emerald-400 transition-colors"
+                >
+                  continue →
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      </div>
     </>
   );
 }
