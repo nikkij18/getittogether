@@ -431,6 +431,26 @@ export default function HomePage() {
     setSavedTasks(prev => prev.filter(t => t.id !== taskId));
   }, []);
 
+  const handleAddStep = useCallback((taskId: string) => {
+    setSavedTasks(prev => prev.map(t => {
+      if (t.id !== taskId) return t;
+      return {
+        ...t,
+        steps: [...t.steps, { text: 'New step', note: null }],
+        checkedSteps: [...t.checkedSteps, false],
+      };
+    }));
+  }, []);
+
+  const handleDeleteStep = useCallback((taskId: string, stepIdx: number) => {
+    setSavedTasks(prev => prev.map(t => {
+      if (t.id !== taskId) return t;
+      const newSteps = t.steps.filter((_, i) => i !== stepIdx);
+      const newChecked = t.checkedSteps.filter((_, i) => i !== stepIdx);
+      return { ...t, steps: newSteps, checkedSteps: newChecked };
+    }));
+  }, []);
+
   // Fire confetti when every step in the preview is checked off
   useEffect(() => {
     if (checkedSteps.length > 0 && checkedSteps.every(Boolean)) {
@@ -446,7 +466,7 @@ export default function HomePage() {
       {/* Dark mode toggle */}
       <button
         onClick={toggle}
-        className="fixed top-5 right-5 z-40 w-11 h-11 rounded-full border-2 border-border bg-card flex items-center justify-center cursor-pointer transition-all hover:scale-110 hover:border-primary hover:shadow-lg"
+        className="fixed top-14 right-5 z-50 w-9 h-9 rounded-full border border-border bg-card/80 flex items-center justify-center cursor-pointer transition-all hover:scale-110 hover:border-primary hover:shadow-lg"
         aria-label="Toggle dark mode"
       >
         <motion.div
@@ -462,8 +482,15 @@ export default function HomePage() {
         </motion.div>
       </button>
 
+      {/* ===== NAVBAR ===== */}
+      <nav className="fixed top-0 left-0 right-0 z-40 flex items-center justify-end gap-10 px-8 py-4">
+        <a href="#home" className="text-sm font-semibold tracking-wide text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-50 transition-colors">Home</a>
+        <a href="#input" className="text-sm font-semibold tracking-wide text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-50 transition-colors">Input</a>
+        <a href="#tasks" className="text-sm font-semibold tracking-wide text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-50 transition-colors">Task List</a>
+      </nav>
+
       {/* ===== HERO SECTION ===== */}
-      <section className="relative min-h-screen flex flex-col overflow-hidden bg-white dark:bg-zinc-950">
+      <section id="home" className="relative min-h-screen flex flex-col overflow-hidden bg-white dark:bg-zinc-950">
         {/* Green radial gradient blob — centered, large */}
         <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
           <div className="w-[90vw] h-[90vw] max-w-[900px] max-h-[900px] rounded-full bg-[radial-gradient(ellipse_at_center,rgba(134,239,172,0.6),rgba(110,231,183,0.35)_40%,transparent_72%)] blur-2xl dark:opacity-35" />
@@ -471,7 +498,7 @@ export default function HomePage() {
 
         {/* Small site label — top left like inspo */}
         <div className="relative z-10 px-8 pt-7">
-          <span className="text-xs font-semibold tracking-widest text-zinc-400 dark:text-zinc-500 uppercase">N2K Studios</span>
+          <span className="text-xs font-semibold tracking-widest text-zinc-400 dark:text-zinc-500 uppercase">by N2K</span>
         </div>
 
         {/* Hero text — shared hover zone, starts scattered, gathers on hover */}
@@ -494,7 +521,7 @@ export default function HomePage() {
             animate={{ opacity: heroHovered ? 1 : 0.5 }}
             transition={{ duration: 0.4 }}
           >
-            tell me the task you keep avoiding.{' '}
+            complete the tasks you keep avoiding.{' '}
             <span className="text-emerald-600 dark:text-emerald-400 font-semibold">no more excuses.</span>
           </motion.p>
 
@@ -519,7 +546,7 @@ export default function HomePage() {
       </section>
 
       {/* ===== TASK INPUT SECTION ===== */}
-      <section className="relative min-h-screen flex flex-col items-center justify-center px-4 py-20 bg-background">
+      <section id="input" className="relative min-h-screen flex flex-col items-center justify-center px-4 py-20 bg-background">
         <div className="w-full max-w-xl mx-auto">
           {/* Input area */}
           <motion.div
@@ -532,11 +559,11 @@ export default function HomePage() {
             <div className="text-4xl md:text-5xl font-bold text-foreground text-center mb-4 whitespace-nowrap [font-family:var(--font-display)]">
               I&apos;m avoiding{' '}
               <Typewriter
-                text={['gym time', 'my taxes', 'my essay', 'laundry']}
+                text={['leg day', 'filing taxes', 'my essay', 'laundry']}
                 speed={65}
                 deleteSpeed={35}
                 waitTime={1800}
-                cursorChar="_"
+                cursorChar="..."
                 className="text-emerald-500"
                 cursorClassName=""
               />
@@ -716,6 +743,7 @@ export default function HomePage() {
       <AnimatePresence>
         {savedTasks.length > 0 && (
           <motion.section
+            id="tasks"
             ref={taskListRef}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -755,7 +783,13 @@ export default function HomePage() {
                       className="w-full flex items-start justify-between gap-3 text-left"
                     >
                       <div className="flex-1 min-w-0">
-                        <p className="font-black text-foreground text-base">{t.task}</p>
+                        <p
+                          contentEditable
+                          suppressContentEditableWarning
+                          onBlur={e => handleEditTaskName(t.id, e.currentTarget.textContent || t.task)}
+                          onClick={e => e.stopPropagation()}
+                          className="font-black text-foreground text-base outline-none cursor-text rounded px-1 -mx-1 hover:bg-muted/40 focus:bg-muted/40"
+                        >{t.task}</p>
                         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                           <span className={`text-xs font-bold ${PRIORITY_COLOR[t.priority]}`}>
                             {PRIORITIES.find(p => p.value === t.priority)?.emoji} {t.priority}
@@ -800,15 +834,6 @@ export default function HomePage() {
                           className="overflow-hidden"
                         >
                           <div className="pt-4 space-y-4">
-                            {/* Editable task name */}
-                            <p
-                              contentEditable
-                              suppressContentEditableWarning
-                              onBlur={e => handleEditTaskName(t.id, e.currentTarget.textContent || t.task)}
-                              onClick={e => e.stopPropagation()}
-                              className="font-black text-foreground text-base outline-none cursor-text rounded px-1 -mx-1 hover:bg-muted/40 focus:bg-muted/40 hidden"
-                            >{t.task}</p>
-
                             {/* Progress bar */}
                             <div className="w-full h-1 bg-border rounded-full overflow-hidden">
                               <motion.div
@@ -823,7 +848,7 @@ export default function HomePage() {
                               {t.steps.map((step, i) => {
                                 const isChecked = !!t.checkedSteps[i];
                                 return (
-                                  <li key={i} className="flex gap-3 items-start">
+                                  <li key={i} className="flex gap-3 items-start group/step">
                                     <Checkbox
                                       checked={isChecked}
                                       onCheckedChange={() => handleToggleSavedStep(t.id, i)}
@@ -863,10 +888,24 @@ export default function HomePage() {
                                         <span className="block text-xs text-muted-foreground italic mt-0.5">{step.note}</span>
                                       )}
                                     </div>
+                                    <button
+                                      onClick={() => handleDeleteStep(t.id, i)}
+                                      className="opacity-0 group-hover/step:opacity-100 transition-opacity text-muted-foreground hover:text-red-400 flex-shrink-0 mt-0.5"
+                                      aria-label="Delete step"
+                                    >
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                    </button>
                                   </li>
                                 );
                               })}
                             </ol>
+                            <button
+                              onClick={() => handleAddStep(t.id)}
+                              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-emerald-600 transition-colors font-medium mt-1"
+                            >
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                              add step
+                            </button>
                           </div>
                         </motion.div>
                       )}
@@ -895,7 +934,7 @@ export default function HomePage() {
 
       {/* Footer */}
       <footer className="text-center py-6 text-muted-foreground text-sm font-semibold bg-background">
-        made with love, by N2K
+        made with swag, by N2K
       </footer>
 
       {/* Toast */}
