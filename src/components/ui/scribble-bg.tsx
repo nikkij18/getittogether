@@ -12,7 +12,8 @@ export const ScribbleBg = () => {
     offset: ["start end", "end start"],
   });
 
-  const tailLength = useTransform(scrollYProgress, [0.3, 0.85], [0, 1]);
+  const tailLength = useTransform(scrollYProgress, [0.55, 0.92], [0, 1]);
+  const tailOpacity = useTransform(scrollYProgress, [0.5, 0.6], [0, 1]);
 
   return (
     <div
@@ -76,15 +77,18 @@ export const ScribbleBg = () => {
         {scribbleDone && (
           <motion.path
             d="M 250 250
-               C 320 310, 150 390, 210 470
-               C 270 550, 380 600, 300 680
-               C 220 760, 130 800, 200 880
-               C 270 960, 380 990, 290 1000"
+               C 450 290, 480 370, 350 430
+               C 180 500, 20 520, 60 610
+               C 100 700, 420 680, 460 760
+               C 500 840, 300 880, 200 840
+               C 100 800, 80 860, 160 900
+               C 240 940, 380 910, 340 970
+               C 300 1030, 100 1020, 80 1000"
             stroke="#34d399"
             strokeWidth="8"
             strokeLinecap="round"
             fill="none"
-            style={{ pathLength: tailLength }}
+            style={{ pathLength: tailLength, opacity: tailOpacity }}
           />
         )}
       </svg>
