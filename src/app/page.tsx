@@ -6,6 +6,7 @@ import { TextDisperse } from '@/components/ui/text-disperse';
 import { Typewriter } from '@/components/ui/typewriter';
 import MorphingArrowButton from '@/components/ui/morphing-arrow-button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { ScribbleBg } from '@/components/ui/scribble-bg';
 
 // ---- Roast Templates ----
 
@@ -13,45 +14,38 @@ const roastsByCategory: Record<string, string[]> = {
 
   // --- FINANCIALS: taxes, bills, FAFSA, financial aid, budgeting ---
   'tax|taxes|irs|fafsa|financial aid|scholarship|grant|bill|bills|rent|payment|utilities|subscription|budget|budgeting': [
-    `You are letting the government keep your money because you won't sit down for 45 minutes. That's a crime against yourself.`,
-    `Bestie, ignoring financial stuff doesn't make it go away. It just makes it bigger, scarier, and more expensive. You are literally paying a procrastination tax on top of your actual taxes.`,
+    `You are letting the government keep your money because you won't sit down for 45 minutes. That's a crime.`,
+    `Ignoring financial stuff doesn't make it go away. It just makes it bigger, scarier, and more expensive. You are literally paying a procrastination tax on top of your actual taxes.`,
     `Your bank account is out here suffering while you "don't feel like dealing with it." Feel like it. For your wallet's sake.`,
-    `Every day you put this off is a day you're choosing stress over relief. The form is not that long. The website is not that complicated. You are the only obstacle.`,
-    `The audacity of letting money stress you out but also not doing the one thing that fixes it. Sit down. Open the tab. Do the thing.`,
-    `Future you — the one who filed on time, got the refund, and slept peacefully — is begging you to start right now.`,
+    `In this econonmy???????`,
+    `In this job market??????? You tripping`,
   ],
 
   // --- EXERCISE: gym, running, yoga, walking, working out ---
   'exercise|workout|gym|run|running|yoga|walk|walking|pilates|lift|lifting|spin|cycling': [
-    `You paid for that gym membership. It is sitting there. Judging you. Every. Single. Month.`,
     'Get the FUCK UP!',
+    `The lion does not concern himself with lazy people`,
     `The version of you that works out regularly is not a different person — it's just you, but you actually went. That's literally all it takes.`,
     `You're going to feel SO good after. You know this. You've done it before. So why are you lying on the couch like you don't know this?`,
     `Your body is a temple and right now you're treating it like a storage unit. Go move it. It doesn't even have to be that long.`,
-    `Imagine being this close to the endorphins and just... not taking them. Free mood boost. Right there. Just a workout away.`,
     `You said "I'll go tomorrow" yesterday. And the day before. Tomorrow is a myth. The gym is real. Go.`,
   ],
 
   // --- SCHOOL: studying, homework, essays, projects, exams ---
   'study|studying|exam|test|homework|assignment|essay|paper|project|presentation|thesis|dissertation|read|reading|class|course': [
-    `That assignment is not going to write itself. Trust me. I would know. It's been waiting for you for days and it has not moved one inch.`,
-    `You're going to have to do it anyway. The only question is whether you do it with time to breathe or at 3am in a full panic spiral. Choose wisely.`,
-    `The grade you want and the effort you're currently putting in are not on speaking terms. Time to reintroduce them.`,
-    `Bestie, "I work better under pressure" is something people say when they've never actually tried NOT being under pressure. Try it. Start now.`,
-    `Your professor is not thinking about you. Your grade, however, very much is. Go earn it.`,
-    `Every hour you avoid this, the task gets scarier in your head and no smaller in reality. Just open the doc. That's step one.`,
-    `Future you — sitting in that exam, or turning in that paper — is entirely depending on present you. Don't let them down for a TikTok scroll session.`,
+    `Don't let a nepo baby future evil consultant outwork you, get that bread`,
+    `Turn the Clairo off and go do your homework`,
   ],
 
   // --- CLEANING: room, laundry, dishes, organizing ---
   'clean|cleaning|room|apartment|house|tidy|organize|mess|laundry|dishes|wash|washing|vacuum|declutter|trash|folding': [
-    `Can't bring a bad bitch back to a hoarder's house, lock in`,
+    `Can't bring a bad bitch back to a mess, lock in`,
     `Ewwwwwwwwwwwwwwwww`,
   ],
 
   // --- MISC: catch-all for everything else ---
   'default': [
-    `You've been "about to start" {task} for how long now? At this point, your procrastination deserves its own LinkedIn profile. It has more experience than you.`,
+    `You've been "about to start" {task} for how long now?`,
     `Charlie Donovan golfs 24/7 and still gets {task} done. What’s your excuse?`,
     `Get the FUCK UP!`,
     `Do {task} now or venmo Nikki $20...GO GO GO`,
@@ -71,11 +65,8 @@ const closers = [
   "you've literally survived worse. go do it.",
   "it's going to feel SO good when it's done. trust.",
   "future you is already saying thank you.",
-  "one step at a time. you've SO got this.",
-  "the hardest part is starting. everything after that is momentum.",
-  "done is better than perfect. always.",
-  "you're not lazy — you were just recharging. now GO.",
-  "remember: 10 minutes of actually doing > 3 hours of dreading.",
+  "one step at a time. you've got this.",
+  "complete these tasks or send AIPAC $20...GO GO GO",
 ];
 
 // ---- Task Breakdown Knowledge Base ----
@@ -83,6 +74,43 @@ interface Step {
   text: string;
   note: string | null;
 }
+
+type Priority = 'urgent' | 'high' | 'medium' | 'low';
+type TimeEstimate = '10m' | '30m' | '1h' | '2h' | '5h+';
+type SavingStep = { phase: 'priority' } | { phase: 'time'; priority: Priority };
+
+interface SavedTask {
+  id: string;
+  task: string;
+  roast: string;
+  steps: Step[];
+  closer: string;
+  checkedSteps: boolean[];
+  priority: Priority;
+  timeEstimate: TimeEstimate;
+}
+
+const PRIORITIES: { value: Priority; emoji: string; label: string }[] = [
+  { value: 'urgent', emoji: '', label: 'urgent' },
+  { value: 'high',   emoji: '', label: 'high'   },
+  { value: 'medium', emoji: '', label: 'medium' },
+  { value: 'low',    emoji: '', label: 'low'    },
+];
+const TIMES: { value: TimeEstimate; label: string }[] = [
+  { value: '10m',  label: '10 min' },
+  { value: '30m',  label: '30 min' },
+  { value: '1h',   label: '1 hr'   },
+  { value: '2h',   label: '2 hrs'  },
+  { value: '5h+',  label: '5+ hrs' },
+];
+const PRIORITY_WEIGHT: Record<Priority, number>      = { urgent: 4, high: 3, medium: 2, low: 1 };
+const TIME_WEIGHT:     Record<TimeEstimate, number>  = { '10m': 1, '30m': 2, '1h': 3, '2h': 4, '5h+': 5 };
+const PRIORITY_COLOR:  Record<Priority, string> = {
+  urgent: 'text-red-500',
+  high:   'text-orange-500',
+  medium: 'text-yellow-600',
+  low:    'text-emerald-500',
+};
 
 const taskBreakdowns: Record<string, Step[]> = {
   'financial aid|fafsa|scholarship|grant': [
@@ -285,11 +313,35 @@ export default function HomePage() {
   const [copied, setCopied] = useState(false);
   const [heroHovered, setHeroHovered] = useState(false);
   const [checkedSteps, setCheckedSteps] = useState<boolean[]>([]);
+  const [savedTasks, setSavedTasks] = useState<SavedTask[]>([]);
+  const [savingStep, setSavingStep] = useState<SavingStep | null>(null);
+  const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
+  const [userName, setUserName] = useState('');
+  const [showNamePrompt, setShowNamePrompt] = useState(false);
+  const [nameInput, setNameInput] = useState('');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
+  const taskListRef = useRef<HTMLDivElement>(null);
   const currentTask = useRef('');
   const { dark, toggle } = useDarkMode();
+
+  // Persist task list + name in localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('git-tasklist');
+      if (stored) setSavedTasks(JSON.parse(stored));
+      const storedName = localStorage.getItem('git-username');
+      if (storedName) {
+        setUserName(storedName);
+      } else {
+        setShowNamePrompt(true);
+      }
+    } catch {}
+  }, []);
+  useEffect(() => {
+    localStorage.setItem('git-tasklist', JSON.stringify(savedTasks));
+  }, [savedTasks]);
 
   const doRoast = useCallback((taskText: string) => {
     const trimmed = taskText.trim();
@@ -329,7 +381,77 @@ export default function HomePage() {
     }, 100);
   }, []);
 
-  // Fire confetti when every step is checked off
+  const handleSaveTask = useCallback((taskName: string, taskRoast: string, taskSteps: Step[], taskCloser: string, priority: Priority, timeEstimate: TimeEstimate) => {
+    setSavedTasks(prev => {
+      const newTask: SavedTask = {
+        id: Date.now().toString(),
+        task: taskName,
+        roast: taskRoast,
+        steps: taskSteps,
+        closer: taskCloser,
+        checkedSteps: new Array(taskSteps.length).fill(false),
+        priority,
+        timeEstimate,
+      };
+      return [...prev, newTask];
+    });
+    setSavingStep(null);
+    setShowResults(false);
+    setTask('');
+    setCheckedSteps([]);
+    setTimeout(() => {
+      taskListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 200);
+  }, []);
+
+  const handleEditTaskName = useCallback((taskId: string, newName: string) => {
+    setSavedTasks(prev => prev.map(t => t.id === taskId ? { ...t, task: newName } : t));
+  }, []);
+
+  const handleEditStep = useCallback((taskId: string, stepIdx: number, newText: string) => {
+    setSavedTasks(prev => prev.map(t => {
+      if (t.id !== taskId) return t;
+      const newSteps = [...t.steps];
+      newSteps[stepIdx] = { ...newSteps[stepIdx], text: newText };
+      return { ...t, steps: newSteps };
+    }));
+  }, []);
+
+  const handleToggleSavedStep = useCallback((taskId: string, stepIdx: number) => {
+    setSavedTasks(prev => prev.map(t => {
+      if (t.id !== taskId) return t;
+      const updated = [...t.checkedSteps];
+      updated[stepIdx] = !updated[stepIdx];
+      if (updated.every(Boolean) && canvasRef.current) fireConfetti(canvasRef.current);
+      return { ...t, checkedSteps: updated };
+    }));
+  }, []);
+
+  const handleDeleteTask = useCallback((taskId: string) => {
+    setSavedTasks(prev => prev.filter(t => t.id !== taskId));
+  }, []);
+
+  const handleAddStep = useCallback((taskId: string) => {
+    setSavedTasks(prev => prev.map(t => {
+      if (t.id !== taskId) return t;
+      return {
+        ...t,
+        steps: [...t.steps, { text: 'New step', note: null }],
+        checkedSteps: [...t.checkedSteps, false],
+      };
+    }));
+  }, []);
+
+  const handleDeleteStep = useCallback((taskId: string, stepIdx: number) => {
+    setSavedTasks(prev => prev.map(t => {
+      if (t.id !== taskId) return t;
+      const newSteps = t.steps.filter((_, i) => i !== stepIdx);
+      const newChecked = t.checkedSteps.filter((_, i) => i !== stepIdx);
+      return { ...t, steps: newSteps, checkedSteps: newChecked };
+    }));
+  }, []);
+
+  // Fire confetti when every step in the preview is checked off
   useEffect(() => {
     if (checkedSteps.length > 0 && checkedSteps.every(Boolean)) {
       if (canvasRef.current) fireConfetti(canvasRef.current);
@@ -338,13 +460,14 @@ export default function HomePage() {
 
   return (
     <>
+      <div className="relative">
       {/* Confetti canvas */}
       <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-50 w-full h-full" />
 
       {/* Dark mode toggle */}
       <button
         onClick={toggle}
-        className="fixed top-5 right-5 z-40 w-11 h-11 rounded-full border-2 border-border bg-card flex items-center justify-center cursor-pointer transition-all hover:scale-110 hover:border-primary hover:shadow-lg"
+        className="fixed top-14 right-5 z-50 w-9 h-9 rounded-full border border-border bg-card/80 flex items-center justify-center cursor-pointer transition-all hover:scale-110 hover:border-primary hover:shadow-lg"
         aria-label="Toggle dark mode"
       >
         <motion.div
@@ -360,17 +483,21 @@ export default function HomePage() {
         </motion.div>
       </button>
 
+      {/* ===== NAVBAR ===== */}
+      <nav className="fixed top-0 left-0 right-0 z-40 flex items-center justify-end gap-10 px-8 py-4">
+        <a href="#home" className="text-sm font-semibold tracking-wide text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-50 transition-colors">Home</a>
+        <a href="#input" className="text-sm font-semibold tracking-wide text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-50 transition-colors">Input</a>
+        <a href="#tasks" className="text-sm font-semibold tracking-wide text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-50 transition-colors">Task List</a>
+      </nav>
+
       {/* ===== HERO SECTION ===== */}
-      <section className="relative min-h-screen flex flex-col overflow-hidden bg-white dark:bg-zinc-950">
+      <section id="home" className="relative min-h-screen flex flex-col overflow-hidden bg-white dark:bg-zinc-950">
         {/* Green radial gradient blob — centered, large */}
         <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
           <div className="w-[90vw] h-[90vw] max-w-[900px] max-h-[900px] rounded-full bg-[radial-gradient(ellipse_at_center,rgba(134,239,172,0.6),rgba(110,231,183,0.35)_40%,transparent_72%)] blur-2xl dark:opacity-35" />
         </div>
 
-        {/* Small site label — top left like inspo */}
-        <div className="relative z-10 px-8 pt-7">
-          <span className="text-xs font-semibold tracking-widest text-zinc-400 dark:text-zinc-500 uppercase">Roast My Task</span>
-        </div>
+
 
         {/* Hero text — shared hover zone, starts scattered, gathers on hover */}
         <div
@@ -379,6 +506,14 @@ export default function HomePage() {
           onMouseLeave={() => setHeroHovered(false)}
         >
           <div className="w-full overflow-visible">
+            {userName && (
+              <TextDisperse
+                scattered={!heroHovered}
+                className="text-[9vw] font-bold text-zinc-900 dark:text-zinc-50 tracking-[-0.03em] leading-none select-none [font-family:var(--font-display)]"
+              >
+                {`${userName},`}
+              </TextDisperse>
+            )}
             <TextDisperse
               scattered={!heroHovered}
               className="text-[9vw] font-bold text-zinc-900 dark:text-zinc-50 tracking-[-0.03em] leading-none select-none [font-family:var(--font-display)]"
@@ -392,16 +527,10 @@ export default function HomePage() {
             animate={{ opacity: heroHovered ? 1 : 0.5 }}
             transition={{ duration: 0.4 }}
           >
-            tell me the task you keep avoiding.{' '}
-            <span className="text-emerald-600 dark:text-emerald-400 font-semibold">i&apos;ll bully you into doing it.</span>
+            the to-do list that tells you where to start.<br />
+            <span className="text-emerald-600 dark:text-emerald-400 font-semibold">we do the thinking, so you can focus on doing.</span>
           </motion.p>
 
-          {/* Tags row */}
-          <div className="flex items-center gap-6 mt-10">
-            <span className="text-xs font-semibold tracking-wider text-zinc-400 dark:text-zinc-500">Procrastination.</span>
-            <span className="text-xs font-semibold tracking-wider text-zinc-400 dark:text-zinc-500">Redemption.</span>
-            <span className="text-xs font-semibold tracking-wider text-zinc-400 dark:text-zinc-500">Done.</span>
-          </div>
         </div>
 
         {/* Scroll indicator */}
@@ -417,8 +546,9 @@ export default function HomePage() {
       </section>
 
       {/* ===== TASK INPUT SECTION ===== */}
-      <section className="relative min-h-screen flex flex-col items-center justify-center px-4 py-20 bg-background">
-        <div className="w-full max-w-xl mx-auto">
+      <section id="input" className="relative isolate min-h-screen flex flex-col items-center justify-center px-4 py-20 bg-background">
+        <ScribbleBg />
+        <div className="w-full max-w-xl mx-auto relative z-10">
           {/* Input area */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -430,11 +560,11 @@ export default function HomePage() {
             <div className="text-4xl md:text-5xl font-bold text-foreground text-center mb-4 whitespace-nowrap [font-family:var(--font-display)]">
               I&apos;m avoiding{' '}
               <Typewriter
-                text={['gym time', 'my taxes', 'my essay', 'laundry']}
+                text={['leg day', 'filing taxes', 'my essay', 'laundry']}
                 speed={65}
                 deleteSpeed={35}
                 waitTime={1800}
-                cursorChar="_"
+                cursorChar="..."
                 className="text-emerald-500"
                 cursorClassName=""
               />
@@ -467,27 +597,15 @@ export default function HomePage() {
                 transition={{ duration: 0.5, ease: 'easeOut' }}
                 className="space-y-5"
               >
-                {/* Roast card */}
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.4, delay: 0.1 }}
-                  className="bg-card border-2 border-orange-200 dark:border-orange-900/50 rounded-2xl p-6 shadow-lg"
-                >
-                  <p className="text-foreground font-bold text-base md:text-lg leading-relaxed">{roast}</p>
-                </motion.div>
-
                 {/* Steps card */}
                 <motion.div
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.4, delay: 0.25 }}
+                  transition={{ duration: 0.4, delay: 0.1 }}
                   className="bg-card border-2 border-emerald-200 dark:border-emerald-900/50 rounded-2xl p-6 shadow-lg"
                 >
-                  <div className="flex items-center gap-2 mb-4">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                    <span className="text-xs font-extrabold uppercase tracking-wider text-muted-foreground">ok but here&apos;s how to actually do it</span>
-                  </div>
+                  <p className="text-foreground font-bold text-base md:text-lg leading-relaxed mb-5">{roast}</p>
+                  <div className="border-t border-border mb-4" />
                   <ol className="space-y-4">
                     {steps.map((step, i) => {
                       const isChecked = !!checkedSteps[i];
@@ -552,31 +670,59 @@ export default function HomePage() {
                   </ol>
                 </motion.div>
 
-                {/* Action buttons */}
+                {/* Action buttons / save picker */}
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.6, duration: 0.3 }}
-                  className="flex gap-3 flex-wrap"
+                  className="space-y-3"
                 >
-                  <button
-                    onClick={handleCopy}
-                    className="flex-1 min-w-fit px-4 py-3 bg-card border-2 border-border rounded-xl text-sm font-bold text-foreground transition-all hover:border-muted-foreground hover:bg-secondary hover:-translate-y-0.5"
-                  >
-                    {copied ? 'copied!' : 'copy steps'}
-                  </button>
-                  <button
-                    onClick={() => doRoast(currentTask.current)}
-                    className="flex-1 min-w-fit px-4 py-3 bg-card border-2 border-border rounded-xl text-sm font-bold text-foreground transition-all hover:border-muted-foreground hover:bg-secondary hover:-translate-y-0.5"
-                  >
-                    roast me again
-                  </button>
-                  <button
-                    onClick={handleNew}
-                    className="flex-1 min-w-fit px-4 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 border-2 border-transparent rounded-xl text-sm font-bold text-white transition-all hover:shadow-lg hover:-translate-y-0.5"
-                  >
-                    new task
-                  </button>
+                  <AnimatePresence mode="wait">
+                    {savingStep === null ? (
+                      <motion.div key="buttons" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex gap-3 flex-wrap">
+                        <button onClick={handleCopy} className="flex-1 min-w-fit px-4 py-3 bg-card border-2 border-border rounded-xl text-sm font-bold text-foreground transition-all hover:border-muted-foreground hover:bg-secondary hover:-translate-y-0.5">
+                          {copied ? 'copied!' : 'copy steps'}
+                        </button>
+                        <button onClick={() => setSavingStep({ phase: 'priority' })} className="flex-1 min-w-fit px-4 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 border-2 border-transparent rounded-xl text-sm font-bold text-white transition-all hover:shadow-lg hover:-translate-y-0.5">
+                          + save to list
+                        </button>
+                        <button onClick={handleNew} className="flex-1 min-w-fit px-4 py-3 bg-card border-2 border-border rounded-xl text-sm font-bold text-foreground transition-all hover:border-muted-foreground hover:bg-secondary hover:-translate-y-0.5">
+                          new task
+                        </button>
+                      </motion.div>
+                    ) : savingStep.phase === 'priority' ? (
+                      <motion.div key="priority" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="bg-card border-2 border-border rounded-xl p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-extrabold uppercase tracking-wider text-muted-foreground">how urgent is it?</span>
+                          <button onClick={() => setSavingStep(null)} className="text-muted-foreground hover:text-foreground text-xs">✕</button>
+                        </div>
+                        <div className="flex gap-2 flex-wrap">
+                          {PRIORITIES.map(p => (
+                            <button key={p.value} onClick={() => setSavingStep({ phase: 'time', priority: p.value })}
+                              className="flex items-center gap-1.5 px-4 py-2 rounded-full border-2 border-border bg-secondary text-sm font-bold text-foreground hover:border-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950 transition-all">
+                              <span>{p.emoji}</span><span>{p.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </motion.div>
+                    ) : (
+                      <motion.div key="time" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="bg-card border-2 border-border rounded-xl p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-extrabold uppercase tracking-wider text-muted-foreground">how long will it take?</span>
+                          <button onClick={() => setSavingStep(null)} className="text-muted-foreground hover:text-foreground text-xs">✕</button>
+                        </div>
+                        <div className="flex gap-2 flex-wrap">
+                          {TIMES.map(t => (
+                            <button key={t.value}
+                              onClick={() => handleSaveTask(currentTask.current, roast, steps, closer, savingStep.priority, t.value)}
+                              className="px-4 py-2 rounded-full border-2 border-border bg-secondary text-sm font-bold text-foreground hover:border-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950 transition-all">
+                              {t.label}
+                            </button>
+                          ))}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </motion.div>
 
                 {/* Motivational closer */}
@@ -594,9 +740,226 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* ===== TASK LIST SECTION ===== */}
+      <AnimatePresence>
+        {savedTasks.length > 0 && (
+          <motion.section
+            id="tasks"
+            ref={taskListRef}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            transition={{ duration: 0.4 }}
+            className="bg-background px-4 py-16"
+          >
+            <div className="w-full max-w-xl mx-auto space-y-2">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-base font-medium text-zinc-400 dark:text-zinc-500 tracking-wide">my task list</h2>
+                <span className="text-xs font-bold text-muted-foreground">{savedTasks.length} task{savedTasks.length !== 1 ? 's' : ''}</span>
+              </div>
+
+              {[...savedTasks].sort((a, b) => {
+                const scoreA = PRIORITY_WEIGHT[a.priority] * 5 - TIME_WEIGHT[a.timeEstimate];
+                const scoreB = PRIORITY_WEIGHT[b.priority] * 5 - TIME_WEIGHT[b.timeEstimate];
+                return scoreB - scoreA;
+              }).map(t => {
+                const doneCount = t.checkedSteps.filter(Boolean).length;
+                const allDone = doneCount === t.steps.length;
+                return (
+                  <motion.div
+                    key={t.id}
+                    layout
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    className="bg-card border-2 border-border rounded-lg p-5 shadow-sm"
+                  >
+                    {/* Header */}
+                    <button
+                      onClick={() => setExpandedTasks(prev => {
+                        const next = new Set(prev);
+                        next.has(t.id) ? next.delete(t.id) : next.add(t.id);
+                        return next;
+                      })}
+                      className="w-full flex items-start justify-between gap-3 text-left"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="relative inline-block max-w-full">
+                          <motion.svg
+                            width="100%"
+                            height="20"
+                            viewBox="0 0 340 32"
+                            preserveAspectRatio="none"
+                            className="absolute left-0 top-1/2 -translate-y-1/2 pointer-events-none z-20 w-full"
+                          >
+                            <motion.path
+                              d="M 10 16.91 s 79.8 -11.36 98.1 -11.34 c 22.2 0.02 -47.82 14.25 -33.39 22.02 c 12.61 6.77 124.18 -27.98 133.31 -17.28 c 7.52 8.38 -26.8 20.02 4.61 22.05 c 24.55 1.93 113.37 -20.36 113.37 -20.36"
+                              vectorEffect="non-scaling-stroke"
+                              strokeWidth={2}
+                              strokeLinecap="round"
+                              strokeMiterlimit={10}
+                              fill="none"
+                              animate={{ pathLength: allDone ? 1 : 0, opacity: allDone ? 1 : 0 }}
+                              transition={{ pathLength: { duration: 0.8, ease: 'easeInOut' }, opacity: { duration: 0.01, delay: allDone ? 0 : 0.8 } }}
+                              className="stroke-zinc-400 dark:stroke-zinc-500"
+                            />
+                          </motion.svg>
+                          <motion.p
+                            animate={{ opacity: allDone ? 0.4 : 1 }}
+                            transition={{ duration: 0.3 }}
+                            contentEditable
+                            suppressContentEditableWarning
+                            onBlur={e => handleEditTaskName(t.id, e.currentTarget.textContent || t.task)}
+                            onClick={e => e.stopPropagation()}
+                            className="font-bold text-foreground text-sm outline-none cursor-text rounded px-1 -mx-1 hover:bg-muted/40 focus:bg-muted/40"
+                          >{t.task}</motion.p>
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          <span className={`text-xs font-bold ${PRIORITY_COLOR[t.priority]}`}>
+                            {PRIORITIES.find(p => p.value === t.priority)?.emoji} {t.priority}
+                          </span>
+                          <span className="text-xs text-muted-foreground">·</span>
+                          <span className="text-xs text-muted-foreground font-medium">{t.timeEstimate}</span>
+                          <span className="text-xs text-muted-foreground">·</span>
+                          <span className="text-xs text-muted-foreground font-medium">
+                            {allDone ? '✓ all done!' : `${doneCount}/${t.steps.length} steps`}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
+                        <motion.svg
+                          animate={{ rotate: expandedTasks.has(t.id) ? 180 : 0 }}
+                          transition={{ duration: 0.25, ease: 'easeInOut' }}
+                          width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                          className="text-muted-foreground"
+                        >
+                          <path d="M6 9l6 6 6-6" />
+                        </motion.svg>
+                        <span
+                          onClick={e => { e.stopPropagation(); handleDeleteTask(t.id); }}
+                          role="button"
+                          className="text-muted-foreground hover:text-foreground transition-colors"
+                          aria-label="Remove task"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </span>
+                      </div>
+                    </button>
+
+                    {/* Collapsible content */}
+                    <AnimatePresence initial={false}>
+                      {expandedTasks.has(t.id) && (
+                        <motion.div
+                          key="content"
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.3, ease: 'easeInOut' }}
+                          className="overflow-hidden"
+                        >
+                          <div className="pt-4 space-y-4">
+                            {/* Progress bar */}
+                            <div className="w-full h-1 bg-border rounded-full overflow-hidden">
+                              <motion.div
+                                className="h-full bg-gradient-to-r from-emerald-400 to-teal-500 rounded-full"
+                                animate={{ width: `${(doneCount / t.steps.length) * 100}%` }}
+                                transition={{ duration: 0.4, ease: 'easeOut' }}
+                              />
+                            </div>
+
+                            {/* Checklist with scribble */}
+                            <ol className="space-y-3">
+                              {t.steps.map((step, i) => {
+                                const isChecked = !!t.checkedSteps[i];
+                                return (
+                                  <li key={i} className="flex gap-3 items-start group/step">
+                                    <Checkbox
+                                      checked={isChecked}
+                                      onCheckedChange={() => handleToggleSavedStep(t.id, i)}
+                                      className="mt-0.5 flex-shrink-0"
+                                    />
+                                    <div className="relative flex-1">
+                                      <motion.svg
+                                        width="100%"
+                                        height="32"
+                                        viewBox="0 0 340 32"
+                                        preserveAspectRatio="none"
+                                        className="absolute left-0 top-1/2 -translate-y-1/2 pointer-events-none z-20 w-full h-8"
+                                      >
+                                        <motion.path
+                                          d="M 10 16.91 s 79.8 -11.36 98.1 -11.34 c 22.2 0.02 -47.82 14.25 -33.39 22.02 c 12.61 6.77 124.18 -27.98 133.31 -17.28 c 7.52 8.38 -26.8 20.02 4.61 22.05 c 24.55 1.93 113.37 -20.36 113.37 -20.36"
+                                          vectorEffect="non-scaling-stroke"
+                                          strokeWidth={2}
+                                          strokeLinecap="round"
+                                          strokeMiterlimit={10}
+                                          fill="none"
+                                          animate={{ pathLength: isChecked ? 1 : 0, opacity: isChecked ? 1 : 0 }}
+                                          transition={{ pathLength: { duration: 0.8, ease: 'easeInOut' }, opacity: { duration: 0.01, delay: isChecked ? 0 : 0.8 } }}
+                                          className="stroke-zinc-400 dark:stroke-zinc-500"
+                                        />
+                                      </motion.svg>
+                                      <motion.span
+                                        animate={{ opacity: isChecked ? 0.4 : 1 }}
+                                        transition={{ duration: 0.3 }}
+                                        contentEditable
+                                        suppressContentEditableWarning
+                                        onBlur={e => handleEditStep(t.id, i, e.currentTarget.textContent || step.text)}
+                                        className="text-foreground font-semibold text-sm leading-relaxed block outline-none cursor-text rounded px-1 -mx-1 hover:bg-muted/40 focus:bg-muted/40"
+                                      >
+                                        {step.text}
+                                      </motion.span>
+                                      {step.note && (
+                                        <span className="block text-xs text-muted-foreground italic mt-0.5">{step.note}</span>
+                                      )}
+                                    </div>
+                                    <button
+                                      onClick={() => handleDeleteStep(t.id, i)}
+                                      className="opacity-0 group-hover/step:opacity-100 transition-opacity text-muted-foreground hover:text-red-400 flex-shrink-0 mt-0.5"
+                                      aria-label="Delete step"
+                                    >
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                    </button>
+                                  </li>
+                                );
+                              })}
+                            </ol>
+                            <button
+                              onClick={() => handleAddStep(t.id)}
+                              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-emerald-600 transition-colors font-medium mt-1"
+                            >
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                              add step
+                            </button>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                  </motion.div>
+                );
+              })}
+
+              {/* Closer — shown below all tasks when any task is fully done */}
+              <AnimatePresence>
+                {savedTasks.some(t => t.checkedSteps.length > 0 && t.checkedSteps.every(Boolean)) && (
+                  <motion.p
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    className="text-emerald-600 dark:text-emerald-400 font-bold text-sm italic text-center pt-4"
+                  >
+                    {savedTasks.find(t => t.checkedSteps.length > 0 && t.checkedSteps.every(Boolean))?.closer}
+                  </motion.p>
+                )}
+              </AnimatePresence>
+            </div>
+          </motion.section>
+        )}
+      </AnimatePresence>
+
       {/* Footer */}
       <footer className="text-center py-6 text-muted-foreground text-sm font-semibold bg-background">
-        made with love, by N2K
+        made with swag, by N2K
       </footer>
 
       {/* Toast */}
@@ -612,6 +975,62 @@ export default function HomePage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ===== NAME PROMPT MODAL ===== */}
+      <AnimatePresence>
+        {showNamePrompt && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-white dark:bg-zinc-950"
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 24 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 12 }}
+              transition={{ duration: 0.35, ease: 'easeOut' }}
+              className="w-full max-w-md mx-8 text-center"
+            >
+              <h3 className="text-4xl md:text-5xl font-bold text-foreground mb-10 [font-family:var(--font-display)]">what should we call you?</h3>
+              <input
+                autoFocus
+                type="text"
+                value={nameInput}
+                onChange={e => setNameInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    const name = nameInput.trim();
+                    if (name) { setUserName(name); localStorage.setItem('git-username', name); }
+                    setShowNamePrompt(false);
+                  }
+                }}
+                placeholder="your name"
+                className="w-full bg-transparent border-b-2 border-zinc-200 dark:border-zinc-700 focus:border-emerald-400 outline-none text-foreground text-2xl font-medium text-center py-3 transition-colors placeholder:text-zinc-300 dark:placeholder:text-zinc-600 caret-emerald-500 mb-12"
+              />
+              <div className="flex items-center justify-center gap-8">
+                <button
+                  onClick={() => setShowNamePrompt(false)}
+                  className="text-sm text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                >
+                  skip
+                </button>
+                <button
+                  onClick={() => {
+                    const name = nameInput.trim();
+                    if (name) { setUserName(name); localStorage.setItem('git-username', name); }
+                    setShowNamePrompt(false);
+                  }}
+                  className="text-sm font-semibold text-emerald-600 hover:text-emerald-500 dark:text-emerald-400 transition-colors"
+                >
+                  continue →
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      </div>
     </>
   );
 }
