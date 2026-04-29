@@ -313,6 +313,7 @@ export default function HomePage() {
   const [copied, setCopied] = useState(false);
   const [heroHovered, setHeroHovered] = useState(false);
   const [checkedSteps, setCheckedSteps] = useState<boolean[]>([]);
+  const [mode, setMode] = useState<'auto' | 'custom'>('auto');
   const [savedTasks, setSavedTasks] = useState<SavedTask[]>([]);
   const [savingStep, setSavingStep] = useState<SavingStep | null>(null);
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
@@ -353,15 +354,30 @@ export default function HomePage() {
     setLoading(true);
     setTimeout(() => {
       setRoast(getRoast(trimmed));
-      setSteps(getSteps(trimmed));
+      const generatedSteps = mode === 'auto' ? getSteps(trimmed) : [];
+      setSteps(generatedSteps);
       setCloser(pick(closers));
       setShowResults(true);
       setLoading(false);
-      setCheckedSteps(new Array(getSteps(trimmed).length).fill(false));
+      setCheckedSteps(new Array(generatedSteps.length).fill(false));
       setTimeout(() => {
         resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 100);
     }, 1000);
+  }, [mode]);
+
+  const handleAddPreviewStep = useCallback(() => {
+    setSteps(prev => [...prev, { text: 'new step', note: null }]);
+    setCheckedSteps(prev => [...prev, false]);
+  }, []);
+
+  const handleEditPreviewStep = useCallback((idx: number, newText: string) => {
+    setSteps(prev => prev.map((s, i) => i === idx ? { ...s, text: newText } : s));
+  }, []);
+
+  const handleDeletePreviewStep = useCallback((idx: number) => {
+    setSteps(prev => prev.filter((_, i) => i !== idx));
+    setCheckedSteps(prev => prev.filter((_, i) => i !== idx));
   }, []);
 
   const handleCopy = useCallback(() => {
@@ -584,6 +600,22 @@ export default function HomePage() {
               <MorphingArrowButton onClick={() => doRoast(task)} disabled={loading} />
             </div>
 
+            {/* Mode toggle */}
+            <div className="flex items-center justify-center gap-1 mt-3 p-1 bg-muted/50 rounded-full w-fit mx-auto">
+              <button
+                onClick={() => setMode('auto')}
+                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${mode === 'auto' ? 'bg-card shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+              >
+                generate steps
+              </button>
+              <button
+                onClick={() => setMode('custom')}
+                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${mode === 'custom' ? 'bg-card shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+              >
+                write my own
+              </button>
+            </div>
+
           </motion.div>
 
           {/* ===== RESULTS ===== */}
@@ -606,6 +638,9 @@ export default function HomePage() {
                 >
                   <p className="text-foreground font-bold text-base md:text-lg leading-relaxed mb-5">{roast}</p>
                   <div className="border-t border-border mb-4" />
+                  {steps.length === 0 && mode === 'custom' && (
+                    <p className="text-muted-foreground text-sm italic text-center py-2">no steps yet — add your own below</p>
+                  )}
                   <ol className="space-y-4">
                     {steps.map((step, i) => {
                       const isChecked = !!checkedSteps[i];
@@ -615,7 +650,7 @@ export default function HomePage() {
                           initial={{ opacity: 0, x: -12 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ delay: 0.35 + i * 0.1, duration: 0.3 }}
-                          className="flex gap-3 items-start"
+                          className="flex gap-3 items-start group/pstep"
                         >
                           <Checkbox
                             checked={isChecked}
@@ -656,7 +691,10 @@ export default function HomePage() {
                             <motion.span
                               animate={{ opacity: isChecked ? 0.4 : 1 }}
                               transition={{ duration: 0.3 }}
-                              className="text-foreground font-semibold text-sm leading-relaxed block"
+                              contentEditable={mode === 'custom'}
+                              suppressContentEditableWarning
+                              onBlur={mode === 'custom' ? (e => handleEditPreviewStep(i, e.currentTarget.textContent || step.text)) : undefined}
+                              className={`text-foreground font-semibold text-sm leading-relaxed block ${mode === 'custom' ? 'outline-none rounded px-1 -mx-1 hover:bg-muted/40 focus:bg-muted/40 cursor-text' : ''}`}
                             >
                               {step.text}
                             </motion.span>
@@ -664,10 +702,28 @@ export default function HomePage() {
                               <span className="block text-xs text-muted-foreground italic mt-0.5">{step.note}</span>
                             )}
                           </div>
+                          {mode === 'custom' && (
+                            <button
+                              onClick={() => handleDeletePreviewStep(i)}
+                              className="opacity-0 group-hover/pstep:opacity-100 transition-opacity text-muted-foreground hover:text-red-400 flex-shrink-0 mt-0.5"
+                              aria-label="Delete step"
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
+                          )}
                         </motion.li>
                       );
                     })}
                   </ol>
+                  {mode === 'custom' && (
+                    <button
+                      onClick={handleAddPreviewStep}
+                      className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-emerald-600 transition-colors font-medium mt-3"
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                      add step
+                    </button>
+                  )}
                 </motion.div>
 
                 {/* Action buttons / save picker */}
