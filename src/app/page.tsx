@@ -94,6 +94,13 @@ interface SavedTask {
   timeEstimate: TimeEstimate;
 }
 
+interface ArchivedTask {
+  id: string;
+  task: string;
+  stepCount: number;
+  completedAt: number;
+}
+
 const PRIORITIES: { value: Priority; emoji: string; label: string }[] = [
   { value: 'urgent', emoji: '', label: 'urgent' },
   { value: 'high',   emoji: '', label: 'high'   },
@@ -345,6 +352,8 @@ export default function HomePage() {
   const [checkedSteps, setCheckedSteps] = useState<boolean[]>([]);
   const [mode, setMode] = useState<'auto' | 'custom'>('auto');
   const [savedTasks, setSavedTasks] = useState<SavedTask[]>([]);
+  const [archivedTasks, setArchivedTasks] = useState<ArchivedTask[]>([]);
+  const [showArchive, setShowArchive] = useState(false);
   const [savingStep, setSavingStep] = useState<SavingStep | null>(null);
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
   const [userName, setUserName] = useState('');
@@ -388,6 +397,8 @@ export default function HomePage() {
     try {
       const stored = localStorage.getItem('git-tasklist');
       if (stored) setSavedTasks(JSON.parse(stored));
+      const storedArchive = localStorage.getItem('git-archive');
+      if (storedArchive) setArchivedTasks(JSON.parse(storedArchive));
       const storedName = localStorage.getItem('git-username');
       if (storedName) {
         setUserName(storedName);
@@ -399,6 +410,24 @@ export default function HomePage() {
   useEffect(() => {
     localStorage.setItem('git-tasklist', JSON.stringify(savedTasks));
   }, [savedTasks]);
+  useEffect(() => {
+    localStorage.setItem('git-archive', JSON.stringify(archivedTasks));
+  }, [archivedTasks]);
+
+  const handleArchiveTask = useCallback((taskId: string) => {
+    setSavedTasks(prev => {
+      const task = prev.find(t => t.id === taskId);
+      if (!task) return prev;
+      setArchivedTasks(a => [...a, {
+        id: taskId,
+        task: task.task,
+        stepCount: task.steps.length,
+        completedAt: Date.now(),
+      }]);
+      return prev.filter(t => t.id !== taskId);
+    });
+    if (canvasRef.current) fireConfetti(canvasRef.current);
+  }, []);
 
   const doRoast = useCallback((taskText: string) => {
     const trimmed = taskText.trim();
@@ -1037,6 +1066,30 @@ export default function HomePage() {
                               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                               add step
                             </button>
+
+                            {/* Archive CTA when all done */}
+                            <AnimatePresence>
+                              {allDone && (
+                                <motion.div
+                                  initial={{ opacity: 0, y: 8 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  exit={{ opacity: 0 }}
+                                  transition={{ duration: 0.4, delay: 0.3 }}
+                                  className="mt-4 pt-4 border-t border-emerald-200 dark:border-emerald-900/40 flex items-center justify-between gap-3"
+                                >
+                                  <p className="text-sm font-bold text-emerald-700 dark:text-emerald-400">
+                                    you actually did it.
+                                  </p>
+                                  <button
+                                    onClick={() => handleArchiveTask(t.id)}
+                                    className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-extrabold transition-all hover:shadow-md hover:-translate-y-0.5 active:scale-95"
+                                  >
+                                    archive this win
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                  </button>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
                           </div>
                         </motion.div>
                       )}
@@ -1057,6 +1110,97 @@ export default function HomePage() {
                   >
                     {savedTasks.find(t => t.checkedSteps.length > 0 && t.checkedSteps.every(Boolean))?.closer}
                   </motion.p>
+                )}
+              </AnimatePresence>
+            </div>
+          </motion.section>
+        )}
+      </AnimatePresence>
+
+      {/* ===== ARCHIVE SECTION ===== */}
+      <AnimatePresence>
+        {archivedTasks.length > 0 && (
+          <motion.section
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            transition={{ duration: 0.4 }}
+            className="bg-background px-4 pb-16"
+          >
+            <div className="w-full max-w-xl mx-auto">
+              {/* Header — clickable to expand/collapse */}
+              <button
+                onClick={() => setShowArchive(v => !v)}
+                className="w-full flex items-center justify-between mb-3 group"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-base font-bold text-zinc-400 dark:text-zinc-500 tracking-wide">hall of fame</span>
+                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 text-xs font-extrabold">
+                    {archivedTasks.length}
+                  </span>
+                </div>
+                <motion.svg
+                  animate={{ rotate: showArchive ? 180 : 0 }}
+                  transition={{ duration: 0.25, ease: 'easeInOut' }}
+                  width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                  className="text-zinc-400 dark:text-zinc-500"
+                >
+                  <path d="M6 9l6 6 6-6" />
+                </motion.svg>
+              </button>
+
+              <AnimatePresence initial={false}>
+                {showArchive && (
+                  <motion.div
+                    key="archive-list"
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.3, ease: 'easeInOut' }}
+                    className="overflow-hidden"
+                  >
+                    {/* Stats banner */}
+                    <div className="mb-4 p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 text-center">
+                      <p className="text-2xl font-extrabold text-emerald-700 dark:text-emerald-400 [font-family:var(--font-display)]">
+                        {archivedTasks.length} {archivedTasks.length === 1 ? 'task' : 'tasks'} crushed
+                      </p>
+                      <p className="text-xs text-emerald-600/70 dark:text-emerald-500/70 font-medium mt-0.5">
+                        {archivedTasks.reduce((sum, t) => sum + t.stepCount, 0)} total steps completed
+                      </p>
+                    </div>
+
+                    <div className="space-y-1">
+                      {[...archivedTasks].reverse().map(t => {
+                        const date = new Date(t.completedAt);
+                        const now = new Date();
+                        const diffDays = Math.floor((now.getTime() - date.getTime()) / 86400000);
+                        const label = diffDays === 0 ? 'today' : diffDays === 1 ? 'yesterday' : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                        return (
+                          <motion.div
+                            key={t.id}
+                            layout
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: 20 }}
+                            className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-muted/40 transition-colors group/arc"
+                          >
+                            <div className="w-4 h-4 rounded-full border-2 border-emerald-400 dark:border-emerald-600 flex items-center justify-center flex-shrink-0">
+                              <svg width="8" height="8" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-500 dark:text-emerald-400"><polyline points="2 6 5 9 10 3"/></svg>
+                            </div>
+                            <span className="flex-1 text-sm font-semibold text-zinc-500 dark:text-zinc-400 line-through decoration-zinc-300 dark:decoration-zinc-600">{t.task}</span>
+                            <span className="text-xs text-muted-foreground font-medium">{label}</span>
+                            <button
+                              onClick={() => setArchivedTasks(prev => prev.filter(a => a.id !== t.id))}
+                              className="opacity-0 group-hover/arc:opacity-100 transition-opacity text-muted-foreground hover:text-red-400"
+                              aria-label="Remove from archive"
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
+                          </motion.div>
+                        );
+                      })}
+                    </div>
+                  </motion.div>
                 )}
               </AnimatePresence>
             </div>
