@@ -7,6 +7,10 @@ import { Typewriter } from '@/components/ui/typewriter';
 import MorphingArrowButton from '@/components/ui/morphing-arrow-button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScribbleBg } from '@/components/ui/scribble-bg';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import type { DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 // ---- Roast Templates ----
 
@@ -300,6 +304,32 @@ function useDarkMode() {
   return { dark, toggle };
 }
 
+// ---- Sortable step row wrapper ----
+function SortableStep({ id, children }: { id: string; children: React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  return (
+    <li
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
+      className="flex gap-2 items-start group/row"
+    >
+      <button
+        {...attributes}
+        {...listeners}
+        tabIndex={-1}
+        aria-label="Drag to reorder"
+        className="opacity-0 group-hover/row:opacity-100 transition-opacity text-muted-foreground flex-shrink-0 mt-1 cursor-grab active:cursor-grabbing touch-none"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+          <circle cx="9" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/>
+          <circle cx="15" cy="5" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="15" cy="19" r="1.5"/>
+        </svg>
+      </button>
+      {children}
+    </li>
+  );
+}
+
 // ============================================================
 // Main Page Component
 // ============================================================
@@ -326,6 +356,32 @@ export default function HomePage() {
   const taskListRef = useRef<HTMLDivElement>(null);
   const currentTask = useRef('');
   const { dark, toggle } = useDarkMode();
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleReorderPreviewSteps = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = parseInt((active.id as string).replace('preview-step-', ''));
+    const newIndex = parseInt((over.id as string).replace('preview-step-', ''));
+    setSteps(prev => arrayMove(prev, oldIndex, newIndex));
+    setCheckedSteps(prev => arrayMove(prev, oldIndex, newIndex));
+  }, []);
+
+  const handleReorderSavedSteps = useCallback((taskId: string, event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = parseInt((active.id as string).split('-step-')[1]);
+    const newIndex = parseInt((over.id as string).split('-step-')[1]);
+    setSavedTasks(prev => prev.map(t => t.id !== taskId ? t : {
+      ...t,
+      steps: arrayMove(t.steps, oldIndex, newIndex),
+      checkedSteps: arrayMove(t.checkedSteps, oldIndex, newIndex),
+    }));
+  }, []);
 
   // Persist task list + name in localStorage
   useEffect(() => {
@@ -641,80 +697,71 @@ export default function HomePage() {
                   {steps.length === 0 && mode === 'custom' && (
                     <p className="text-muted-foreground text-sm italic text-center py-2">no steps yet — add your own below</p>
                   )}
-                  <ol className="space-y-4">
-                    {steps.map((step, i) => {
-                      const isChecked = !!checkedSteps[i];
-                      return (
-                        <motion.li
-                          key={i}
-                          initial={{ opacity: 0, x: -12 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: 0.35 + i * 0.1, duration: 0.3 }}
-                          className="flex gap-3 items-start group/pstep"
-                        >
-                          <Checkbox
-                            checked={isChecked}
-                            onCheckedChange={(val) => {
-                              const updated = [...checkedSteps];
-                              updated[i] = val === true;
-                              setCheckedSteps(updated);
-                            }}
-                            className="mt-0.5 flex-shrink-0"
-                          />
-                          <div className="relative flex-1">
-                            {/* Scribble strikethrough */}
-                            <motion.svg
-                              width="100%"
-                              height="32"
-                              viewBox="0 0 340 32"
-                              preserveAspectRatio="none"
-                              className="absolute left-0 top-1/2 -translate-y-1/2 pointer-events-none z-20 w-full h-8"
-                            >
-                              <motion.path
-                                d="M 10 16.91 s 79.8 -11.36 98.1 -11.34 c 22.2 0.02 -47.82 14.25 -33.39 22.02 c 12.61 6.77 124.18 -27.98 133.31 -17.28 c 7.52 8.38 -26.8 20.02 4.61 22.05 c 24.55 1.93 113.37 -20.36 113.37 -20.36"
-                                vectorEffect="non-scaling-stroke"
-                                strokeWidth={2}
-                                strokeLinecap="round"
-                                strokeMiterlimit={10}
-                                fill="none"
-                                animate={{
-                                  pathLength: isChecked ? 1 : 0,
-                                  opacity: isChecked ? 1 : 0,
+                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleReorderPreviewSteps}>
+                    <SortableContext items={steps.map((_, i) => `preview-step-${i}`)} strategy={verticalListSortingStrategy}>
+                      <ol className="space-y-4">
+                        {steps.map((step, i) => {
+                          const isChecked = !!checkedSteps[i];
+                          return (
+                            <SortableStep key={`preview-step-${i}`} id={`preview-step-${i}`}>
+                              <Checkbox
+                                checked={isChecked}
+                                onCheckedChange={(val) => {
+                                  const updated = [...checkedSteps];
+                                  updated[i] = val === true;
+                                  setCheckedSteps(updated);
                                 }}
-                                transition={{
-                                  pathLength: { duration: 0.8, ease: 'easeInOut' },
-                                  opacity: { duration: 0.01, delay: isChecked ? 0 : 0.8 },
-                                }}
-                                className="stroke-zinc-400 dark:stroke-zinc-500"
+                                className="mt-0.5 flex-shrink-0"
                               />
-                            </motion.svg>
-                            <motion.span
-                              animate={{ opacity: isChecked ? 0.4 : 1 }}
-                              transition={{ duration: 0.3 }}
-                              contentEditable={mode === 'custom'}
-                              suppressContentEditableWarning
-                              onBlur={mode === 'custom' ? (e => handleEditPreviewStep(i, e.currentTarget.textContent || step.text)) : undefined}
-                              className={`text-foreground font-semibold text-sm leading-relaxed block ${mode === 'custom' ? 'outline-none rounded px-1 -mx-1 hover:bg-muted/40 focus:bg-muted/40 cursor-text' : ''}`}
-                            >
-                              {step.text}
-                            </motion.span>
-                            {step.note && (
-                              <span className="block text-xs text-muted-foreground italic mt-0.5">{step.note}</span>
-                            )}
-                          </div>
-                          {mode === 'custom' && (
-                            <button
-                              onClick={() => handleDeletePreviewStep(i)}
-                              className="opacity-0 group-hover/pstep:opacity-100 transition-opacity text-muted-foreground hover:text-red-400 flex-shrink-0 mt-0.5"
-                              aria-label="Delete step"
-                            >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                            </button>
-                          )}
-                        </motion.li>
-                      );
-                    })}
-                  </ol>
+                              <div className="relative flex-1">
+                                <motion.svg
+                                  width="100%"
+                                  height="32"
+                                  viewBox="0 0 340 32"
+                                  preserveAspectRatio="none"
+                                  className="absolute left-0 top-1/2 -translate-y-1/2 pointer-events-none z-20 w-full h-8"
+                                >
+                                  <motion.path
+                                    d="M 10 16.91 s 79.8 -11.36 98.1 -11.34 c 22.2 0.02 -47.82 14.25 -33.39 22.02 c 12.61 6.77 124.18 -27.98 133.31 -17.28 c 7.52 8.38 -26.8 20.02 4.61 22.05 c 24.55 1.93 113.37 -20.36 113.37 -20.36"
+                                    vectorEffect="non-scaling-stroke"
+                                    strokeWidth={2}
+                                    strokeLinecap="round"
+                                    strokeMiterlimit={10}
+                                    fill="none"
+                                    animate={{ pathLength: isChecked ? 1 : 0, opacity: isChecked ? 1 : 0 }}
+                                    transition={{ pathLength: { duration: 0.8, ease: 'easeInOut' }, opacity: { duration: 0.01, delay: isChecked ? 0 : 0.8 } }}
+                                    className="stroke-zinc-400 dark:stroke-zinc-500"
+                                  />
+                                </motion.svg>
+                                <motion.span
+                                  animate={{ opacity: isChecked ? 0.4 : 1 }}
+                                  transition={{ duration: 0.3 }}
+                                  contentEditable={mode === 'custom'}
+                                  suppressContentEditableWarning
+                                  onBlur={mode === 'custom' ? (e => handleEditPreviewStep(i, e.currentTarget.textContent || step.text)) : undefined}
+                                  className={`text-foreground font-semibold text-sm leading-relaxed block ${mode === 'custom' ? 'outline-none rounded px-1 -mx-1 hover:bg-muted/40 focus:bg-muted/40 cursor-text' : ''}`}
+                                >
+                                  {step.text}
+                                </motion.span>
+                                {step.note && (
+                                  <span className="block text-xs text-muted-foreground italic mt-0.5">{step.note}</span>
+                                )}
+                              </div>
+                              {mode === 'custom' && (
+                                <button
+                                  onClick={() => handleDeletePreviewStep(i)}
+                                  className="opacity-0 group-hover/row:opacity-100 transition-opacity text-muted-foreground hover:text-red-400 flex-shrink-0 mt-0.5"
+                                  aria-label="Delete step"
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                </button>
+                              )}
+                            </SortableStep>
+                          );
+                        })}
+                      </ol>
+                    </SortableContext>
+                  </DndContext>
                   {mode === 'custom' && (
                     <button
                       onClick={handleAddPreviewStep}
@@ -924,61 +971,65 @@ export default function HomePage() {
                             </div>
 
                             {/* Checklist with scribble */}
-                            <ol className="space-y-3">
-                              {t.steps.map((step, i) => {
-                                const isChecked = !!t.checkedSteps[i];
-                                return (
-                                  <li key={i} className="flex gap-3 items-start group/step">
-                                    <Checkbox
-                                      checked={isChecked}
-                                      onCheckedChange={() => handleToggleSavedStep(t.id, i)}
-                                      className="mt-0.5 flex-shrink-0"
-                                    />
-                                    <div className="relative flex-1">
-                                      <motion.svg
-                                        width="100%"
-                                        height="32"
-                                        viewBox="0 0 340 32"
-                                        preserveAspectRatio="none"
-                                        className="absolute left-0 top-1/2 -translate-y-1/2 pointer-events-none z-20 w-full h-8"
-                                      >
-                                        <motion.path
-                                          d="M 10 16.91 s 79.8 -11.36 98.1 -11.34 c 22.2 0.02 -47.82 14.25 -33.39 22.02 c 12.61 6.77 124.18 -27.98 133.31 -17.28 c 7.52 8.38 -26.8 20.02 4.61 22.05 c 24.55 1.93 113.37 -20.36 113.37 -20.36"
-                                          vectorEffect="non-scaling-stroke"
-                                          strokeWidth={2}
-                                          strokeLinecap="round"
-                                          strokeMiterlimit={10}
-                                          fill="none"
-                                          animate={{ pathLength: isChecked ? 1 : 0, opacity: isChecked ? 1 : 0 }}
-                                          transition={{ pathLength: { duration: 0.8, ease: 'easeInOut' }, opacity: { duration: 0.01, delay: isChecked ? 0 : 0.8 } }}
-                                          className="stroke-zinc-400 dark:stroke-zinc-500"
+                            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={e => handleReorderSavedSteps(t.id, e)}>
+                              <SortableContext items={t.steps.map((_, i) => `${t.id}-step-${i}`)} strategy={verticalListSortingStrategy}>
+                                <ol className="space-y-3">
+                                  {t.steps.map((step, i) => {
+                                    const isChecked = !!t.checkedSteps[i];
+                                    return (
+                                      <SortableStep key={`${t.id}-step-${i}`} id={`${t.id}-step-${i}`}>
+                                        <Checkbox
+                                          checked={isChecked}
+                                          onCheckedChange={() => handleToggleSavedStep(t.id, i)}
+                                          className="mt-0.5 flex-shrink-0"
                                         />
-                                      </motion.svg>
-                                      <motion.span
-                                        animate={{ opacity: isChecked ? 0.4 : 1 }}
-                                        transition={{ duration: 0.3 }}
-                                        contentEditable
-                                        suppressContentEditableWarning
-                                        onBlur={e => handleEditStep(t.id, i, e.currentTarget.textContent || step.text)}
-                                        className="text-foreground font-semibold text-sm leading-relaxed block outline-none cursor-text rounded px-1 -mx-1 hover:bg-muted/40 focus:bg-muted/40"
-                                      >
-                                        {step.text}
-                                      </motion.span>
-                                      {step.note && (
-                                        <span className="block text-xs text-muted-foreground italic mt-0.5">{step.note}</span>
-                                      )}
-                                    </div>
-                                    <button
-                                      onClick={() => handleDeleteStep(t.id, i)}
-                                      className="opacity-0 group-hover/step:opacity-100 transition-opacity text-muted-foreground hover:text-red-400 flex-shrink-0 mt-0.5"
-                                      aria-label="Delete step"
-                                    >
-                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                                    </button>
-                                  </li>
-                                );
-                              })}
-                            </ol>
+                                        <div className="relative flex-1">
+                                          <motion.svg
+                                            width="100%"
+                                            height="32"
+                                            viewBox="0 0 340 32"
+                                            preserveAspectRatio="none"
+                                            className="absolute left-0 top-1/2 -translate-y-1/2 pointer-events-none z-20 w-full h-8"
+                                          >
+                                            <motion.path
+                                              d="M 10 16.91 s 79.8 -11.36 98.1 -11.34 c 22.2 0.02 -47.82 14.25 -33.39 22.02 c 12.61 6.77 124.18 -27.98 133.31 -17.28 c 7.52 8.38 -26.8 20.02 4.61 22.05 c 24.55 1.93 113.37 -20.36 113.37 -20.36"
+                                              vectorEffect="non-scaling-stroke"
+                                              strokeWidth={2}
+                                              strokeLinecap="round"
+                                              strokeMiterlimit={10}
+                                              fill="none"
+                                              animate={{ pathLength: isChecked ? 1 : 0, opacity: isChecked ? 1 : 0 }}
+                                              transition={{ pathLength: { duration: 0.8, ease: 'easeInOut' }, opacity: { duration: 0.01, delay: isChecked ? 0 : 0.8 } }}
+                                              className="stroke-zinc-400 dark:stroke-zinc-500"
+                                            />
+                                          </motion.svg>
+                                          <motion.span
+                                            animate={{ opacity: isChecked ? 0.4 : 1 }}
+                                            transition={{ duration: 0.3 }}
+                                            contentEditable
+                                            suppressContentEditableWarning
+                                            onBlur={e => handleEditStep(t.id, i, e.currentTarget.textContent || step.text)}
+                                            className="text-foreground font-semibold text-sm leading-relaxed block outline-none cursor-text rounded px-1 -mx-1 hover:bg-muted/40 focus:bg-muted/40"
+                                          >
+                                            {step.text}
+                                          </motion.span>
+                                          {step.note && (
+                                            <span className="block text-xs text-muted-foreground italic mt-0.5">{step.note}</span>
+                                          )}
+                                        </div>
+                                        <button
+                                          onClick={() => handleDeleteStep(t.id, i)}
+                                          className="opacity-0 group-hover/row:opacity-100 transition-opacity text-muted-foreground hover:text-red-400 flex-shrink-0 mt-0.5"
+                                          aria-label="Delete step"
+                                        >
+                                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                        </button>
+                                      </SortableStep>
+                                    );
+                                  })}
+                                </ol>
+                              </SortableContext>
+                            </DndContext>
                             <button
                               onClick={() => handleAddStep(t.id)}
                               className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-emerald-600 transition-colors font-medium mt-1"
