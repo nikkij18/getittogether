@@ -15,7 +15,7 @@ const cormorant = Cormorant_Garamond({
 });
 
 export const metadata: Metadata = {
-  title: "Do The Thing — Stop Avoiding Your Tasks",
+  title: "Get It Together",
   description:
     "Enter the task you keep avoiding and get a funny, personalized roast that motivates you to actually do it. Plus a step-by-step breakdown so it feels less scary.",
 };
