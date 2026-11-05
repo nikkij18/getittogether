@@ -359,6 +359,8 @@ export default function HomePage() {
   const [userName, setUserName] = useState('');
   const [showNamePrompt, setShowNamePrompt] = useState(false);
   const [nameInput, setNameInput] = useState('');
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const roastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
@@ -437,7 +439,7 @@ export default function HomePage() {
     }
     currentTask.current = trimmed;
     setLoading(true);
-    setTimeout(() => {
+    roastTimer.current = setTimeout(() => {
       setRoast(getRoast(trimmed));
       const generatedSteps = mode === 'auto' ? getSteps(trimmed) : [];
       setSteps(generatedSteps);
@@ -480,6 +482,32 @@ export default function HomePage() {
       inputRef.current?.focus();
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }, 100);
+  }, []);
+
+  // Reset the page to its first-visit state. The theme preference is kept.
+  const handleClearAll = useCallback(() => {
+    if (roastTimer.current) clearTimeout(roastTimer.current);
+    currentTask.current = '';
+    setTask('');
+    setRoast('');
+    setSteps([]);
+    setCloser('');
+    setCheckedSteps([]);
+    setShowResults(false);
+    setLoading(false);
+    setCopied(false);
+    setMode('auto');
+    setSavedTasks([]);
+    setArchivedTasks([]);
+    setShowArchive(false);
+    setSavingStep(null);
+    setExpandedTasks(new Set());
+    setUserName('');
+    setNameInput('');
+    localStorage.removeItem('git-username');
+    setShowClearConfirm(false);
+    setShowNamePrompt(true);
+    window.scrollTo({ top: 0 });
   }, []);
 
   const handleSaveTask = useCallback((taskName: string, taskRoast: string, taskSteps: Step[], taskCloser: string, priority: Priority, timeEstimate: TimeEstimate) => {
@@ -582,6 +610,16 @@ export default function HomePage() {
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
           )}
         </motion.div>
+      </button>
+
+      {/* Clear everything */}
+      <button
+        onClick={() => setShowClearConfirm(true)}
+        className="fixed top-[6.5rem] right-5 z-50 w-9 h-9 rounded-full border border-border bg-card/80 flex items-center justify-center cursor-pointer transition-all hover:scale-110 hover:border-red-500 hover:text-red-500 hover:shadow-lg"
+        aria-label="Clear everything"
+        title="Clear everything"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
       </button>
 
       {/* ===== NAVBAR ===== */}
@@ -1223,6 +1261,53 @@ export default function HomePage() {
             className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-foreground text-background px-6 py-3 rounded-xl text-sm font-bold shadow-xl z-50"
           >
             Copied to clipboard! Now go do the thing.
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ===== CLEAR CONFIRMATION MODAL ===== */}
+      <AnimatePresence>
+        {showClearConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowClearConfirm(false)}
+            onKeyDown={e => { if (e.key === 'Escape') setShowClearConfirm(false); }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-6"
+          >
+            <motion.div
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="clear-confirm-title"
+              aria-describedby="clear-confirm-description"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              onClick={e => e.stopPropagation()}
+              className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-xl"
+            >
+              <h3 id="clear-confirm-title" className="text-2xl font-bold text-foreground mb-2 [font-family:var(--font-display)]">clear everything?</h3>
+              <p id="clear-confirm-description" className="text-sm text-muted-foreground mb-6">
+                This deletes your current task, saved tasks, hall of fame, and name. You can&apos;t undo this.
+              </p>
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  autoFocus
+                  onClick={() => setShowClearConfirm(false)}
+                  className="rounded-lg px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted cursor-pointer"
+                >
+                  cancel
+                </button>
+                <button
+                  onClick={handleClearAll}
+                  className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 cursor-pointer"
+                >
+                  clear everything
+                </button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
