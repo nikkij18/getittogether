@@ -55,13 +55,13 @@ export function TextDisperse({
 							x: t.x + 'em',
 							y: t.y + 'em',
 							rotateZ: isSpace ? 0 : t.rotationZ,
-							transition: { duration: 0.9, ease: [0.33, 1, 0.68, 1], delay: i * 0.03 },
+							transition: { duration: 0.5, ease: [0.33, 1, 0.68, 1], delay: i * 0.01 },
 						},
 						together: {
 							x: 0,
 							y: 0,
 							rotateZ: 0,
-							transition: { duration: 0.75, ease: [0.33, 1, 0.68, 1], delay: i * 0.02 },
+							transition: { duration: 0.4, ease: [0.33, 1, 0.68, 1], delay: i * 0.008 },
 						},
 					}}
 				>
