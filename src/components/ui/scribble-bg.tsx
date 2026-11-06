@@ -9,7 +9,7 @@ export const ScribbleBg = () => {
 
   const { scrollYProgress } = useScroll({
     target: ref,
-    offset: ["start end", "end start"],
+    offset: ["start end", "end end"],
   });
 
   const tailLength = useTransform(scrollYProgress, [0.55, 0.92], [0, 1]);

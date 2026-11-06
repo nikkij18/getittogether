@@ -543,7 +543,8 @@ export default function HomePage() {
 
   return (
     <>
-      <div className="relative">
+      {/* overflow-clip stops the scribble background extending the page past the footer */}
+      <div className="relative overflow-clip">
       {/* Confetti canvas */}
       <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-50 w-full h-full" />
 
@@ -618,7 +619,7 @@ export default function HomePage() {
           <motion.p
             className="text-zinc-500 dark:text-zinc-400 text-base md:text-lg font-medium mt-8 max-w-sm"
             animate={{ opacity: heroHovered ? 1 : 0.5 }}
-            transition={{ duration: 0.4 }}
+            transition={{ duration: 0.25 }}
           >
             the to-do list that tells you where to start.<br />
             <span className="text-emerald-600 dark:text-emerald-400 font-semibold">we do the thinking, so you can focus on doing.</span>
@@ -1273,13 +1274,13 @@ export default function HomePage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={{ duration: 0.12, ease: 'easeOut' }}
             className="fixed inset-0 z-50 flex items-center justify-center bg-white dark:bg-zinc-950"
           >
             <motion.div
-              initial={{ opacity: 0, y: 24 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 12 }}
-              transition={{ duration: 0.35, ease: 'easeOut' }}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0, transition: { duration: 0.2, ease: 'easeOut' } }}
+              exit={{ opacity: 0, transition: { duration: 0.1, ease: 'easeOut' } }}
               className="w-full max-w-md mx-8 text-center"
             >
               <h3 className="text-4xl md:text-5xl font-bold text-foreground mb-10 [font-family:var(--font-display)]">what should we call you?</h3>
