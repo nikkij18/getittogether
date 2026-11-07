@@ -9,7 +9,7 @@ Most to-do lists store tasks and leave the hardest decision to you: where to sta
 ## How it works
 
 1. Enter a task, choose its urgency, and set its expected time.
-2. Optionally attach up to 5 files, such as instructions and a rubric (PDF, Word, or text), then get a short AI-written plan fitted to your time, or write your own.
+2. Optionally attach up to 5 files, such as instructions and a rubric (PDF, Word, or text), or paste text, then get a short AI-written plan fitted to your time, or write your own.
 3. Save the task. The list ranks it and highlights your next action.
 
 ### Ranking
@@ -35,7 +35,7 @@ A task moves up one urgency level for every 3 days it waits, up to two levels. L
 
 Tasks are stored in your browser's `localStorage`. There are no accounts, and tasks don't sync between browsers or devices.
 
-To generate steps, the task, urgency, expected time, and text from any attached files are sent to an AI provider through Vercel AI Gateway. Files aren't stored by this site. The model's providers offer zero data retention and don't train on this data. Spending has a hard monthly cap, and requests are rate limited per visitor.
+To generate steps, the task, urgency, expected time, and text from any attached files or pasted text are sent to an AI provider through Vercel AI Gateway. Files aren't stored by this site. The model is GPT-4.1 mini by OpenAI (set in [`src/lib/ai-model.ts`](src/lib/ai-model.ts)). Its providers offer zero data retention and don't train on this data. Spending has a hard monthly cap, and requests are rate limited per visitor.
 
 ## Run it locally
 

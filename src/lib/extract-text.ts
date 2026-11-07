@@ -2,12 +2,13 @@ import mammoth from 'mammoth';
 import { extractText } from 'unpdf';
 
 export const MAX_FILES = 5;
+export const MAX_PASTED_CHARS = 20_000;
 export const MAX_TOTAL_BYTES = 4 * 1024 * 1024;
 
 // Roughly 10 pages across all files. This is what keeps the cost of one request predictable.
 const MAX_CHARS = 30_000;
 
-export type FileProblem = 'files_too_large' | 'too_many_files' | 'unsupported_file' | 'unreadable_file';
+export type FileProblem = 'files_too_large' | 'too_many_files' | 'unsupported_file' | 'unreadable_file' | 'pasted_too_long';
 
 export class FileError extends Error {
   constructor(public code: FileProblem, public fileName?: string) {
@@ -54,12 +55,19 @@ async function extractOne(file: File): Promise<string> {
   return text;
 }
 
-/** Pull the text out of uploads. Files are never stored. */
-export async function extractDocuments(files: File[]): Promise<ExtractedDocument[]> {
+/** Pull the text out of uploads and pasted text. Nothing is stored. */
+export async function extractDocuments(files: File[], pasted = ''): Promise<ExtractedDocument[]> {
   if (files.length > MAX_FILES) throw new FileError('too_many_files');
   if (files.reduce((total, file) => total + file.size, 0) > MAX_TOTAL_BYTES) throw new FileError('files_too_large');
 
+  if (pasted.length > MAX_PASTED_CHARS) throw new FileError('pasted_too_long');
+
+  const names = files.map((file, i) => file.name.replace(/[^\w .()-]/g, '').slice(0, 80) || `file ${i + 1}`);
   const texts = await Promise.all(files.map(extractOne));
+  if (pasted) {
+    names.push('pasted text');
+    texts.push(pasted);
+  }
 
   // Share the text limit fairly. Short files keep everything, and whatever they
   // don't use goes to the longer ones.
@@ -72,9 +80,9 @@ export async function extractDocuments(files: File[]): Promise<ExtractedDocument
     remaining -= allowance[i];
   });
 
-  return files.map((file, i) => ({
-    name: file.name.replace(/[^\w .()-]/g, '').slice(0, 80) || `file ${i + 1}`,
-    text: texts[i].slice(0, allowance[i]),
-    truncated: texts[i].length > allowance[i],
+  return texts.map((text, i) => ({
+    name: names[i],
+    text: text.slice(0, allowance[i]),
+    truncated: text.length > allowance[i],
   }));
 }

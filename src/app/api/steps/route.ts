@@ -2,9 +2,9 @@ import { generateText, Output } from 'ai';
 import { z } from 'zod';
 import { extractDocuments, FileError } from '@/lib/extract-text';
 import type { ExtractedDocument } from '@/lib/extract-text';
+import { DEFAULT_STEP_MODEL } from '@/lib/ai-model';
 
-// All of this model's providers offer zero data retention and don't train on inputs.
-const MODEL = process.env.AI_GATEWAY_MODEL ?? 'openai/gpt-4.1-mini-fast';
+const MODEL = process.env.AI_GATEWAY_MODEL ?? DEFAULT_STEP_MODEL;
 // Enforcing retention per request needs purchased AI Gateway credits. Set to "true" once they exist.
 const ENFORCE_ZDR = process.env.AI_GATEWAY_ENFORCE_ZDR === 'true';
 
@@ -53,13 +53,14 @@ export async function POST(request: Request) {
 
   let documents: ExtractedDocument[] = [];
   const files = (form?.getAll('file') ?? []).filter((f): f is File => f instanceof File && f.size > 0);
-  if (files.length > 0) {
+  const pasted = String(form?.get('notes') ?? '').trim();
+  if (files.length > 0 || pasted) {
     try {
-      documents = await extractDocuments(files);
+      documents = await extractDocuments(files, pasted);
     } catch (error) {
       const code = error instanceof FileError ? error.code : 'unreadable_file';
       const file = error instanceof FileError ? error.fileName : undefined;
-      return Response.json({ error: code, file }, { status: code === 'files_too_large' ? 413 : 422 });
+      return Response.json({ error: code, file }, { status: code === 'files_too_large' || code === 'pasted_too_long' ? 413 : 422 });
     }
   }
 
@@ -79,7 +80,7 @@ export async function POST(request: Request) {
       maxOutputTokens: 600,
       abortSignal: AbortSignal.timeout(30_000),
     });
-    return Response.json({ steps: output.steps.slice(0, 6), truncated: documents.filter(d => d.truncated).map(d => d.name) });
+    return Response.json({ steps: output.steps.slice(0, 6), truncated: documents.filter(d => d.truncated).map(d => d.name), model: MODEL });
   } catch (error) {
     // Task text stays out of the logs.
     console.error('Step generation failed:', error instanceof Error ? error.name : 'unknown');

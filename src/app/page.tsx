@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Paperclip, X } from 'lucide-react';
+import { ClipboardPaste, Paperclip, X } from 'lucide-react';
 import { TextDisperse } from '@/components/ui/text-disperse';
 import MorphingArrowButton from '@/components/ui/morphing-arrow-button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -17,6 +17,7 @@ import {
   PRIORITIES, TIME_STOPS, agedUrgency, isFinished, nextAction, normalizeTask, rankTasks, timeLabel,
 } from '@/lib/priority';
 import type { Priority, SavedTask, Step } from '@/lib/priority';
+import { DEFAULT_STEP_MODEL, modelName } from '@/lib/ai-model';
 
 interface ArchivedTask {
   id: string;
@@ -34,12 +35,14 @@ const PRIORITY_COLOR: Record<Priority, string> = {
 
 const MAX_FILES = 5;
 const MAX_TOTAL_BYTES = 4 * 1024 * 1024;
+const MAX_PASTED_CHARS = 20_000;
 
 const FILE_ERRORS: Record<string, string> = {
   files_too_large: 'Those files are over 4 MB combined. Remove one or use smaller files.',
   too_many_files: `You can attach up to ${MAX_FILES} files.`,
   unsupported_file: 'Use PDF, Word (.docx), or text files.',
   unreadable_file: "The text couldn't be read. If it's a scan, try a copy with selectable text.",
+  pasted_too_long: `Pasted text can be up to ${MAX_PASTED_CHARS.toLocaleString()} characters.`,
 };
 
 class StepsError extends Error {
@@ -53,25 +56,28 @@ function fileProblemMessage(error: unknown): string | null {
   return error.fileName ? `${error.fileName}: ${FILE_ERRORS[error.code]}` : FILE_ERRORS[error.code];
 }
 
-async function requestSteps(task: string, urgency: Priority, minutes: number, files: File[], signal?: AbortSignal) {
+async function requestSteps(task: string, urgency: Priority, minutes: number, files: File[], pasted: string, signal?: AbortSignal) {
   const body = new FormData();
   body.set('task', task);
   body.set('urgency', urgency);
   body.set('minutes', String(minutes));
   files.forEach(file => body.append('file', file));
+  if (pasted.trim()) body.set('notes', pasted.trim());
 
   const response = await fetch('/api/steps', { method: 'POST', body, signal });
-  const data: { steps?: Step[]; truncated?: string[]; error?: string; file?: string } = await response.json().catch(() => ({}));
+  const data: { steps?: Step[]; truncated?: string[]; model?: string; error?: string; file?: string } = await response.json().catch(() => ({}));
   if (!response.ok || !data.steps) throw new StepsError(data.error ?? 'generation_failed', data.file);
-  return { steps: data.steps, truncated: data.truncated ?? [] };
+  return { steps: data.steps, truncated: data.truncated ?? [], model: data.model ?? DEFAULT_STEP_MODEL };
 }
 
 // ---- Optional files with the task's instructions ----
-function FileAttach({ files, onChange, label, error }: {
+function FileAttach({ files, onChange, label, error, children }: {
   files: File[];
   onChange: (files: File[], problem: string | null) => void;
   label: string;
   error?: string | null;
+  /** Other actions shown on the same row as the attach button. */
+  children?: React.ReactNode;
 }) {
   const add = (chosen: File[]) => {
     if (chosen.length === 0) return;
@@ -97,6 +103,7 @@ function FileAttach({ files, onChange, label, error }: {
           ))}
         </ul>
       )}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
       {files.length < MAX_FILES && (
         <label className="inline-flex items-center gap-1.5 text-xs font-bold text-muted-foreground hover:text-foreground transition-colors cursor-pointer has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-ring">
           <Paperclip size={14} aria-hidden="true" />
@@ -110,6 +117,8 @@ function FileAttach({ files, onChange, label, error }: {
           />
         </label>
       )}
+      {children}
+      </div>
       {error && <p role="alert" className="text-xs font-semibold text-red-500 mt-1">{error}</p>}
     </div>
   );
@@ -269,6 +278,9 @@ export default function HomePage() {
   const [attachments, setAttachments] = useState<File[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [usedAttachments, setUsedAttachments] = useState<{ names: string[]; truncated: string[] } | null>(null);
+  const [pasted, setPasted] = useState('');
+  const [showPaste, setShowPaste] = useState(false);
+  const [stepsModel, setStepsModel] = useState<string | null>(null);
   const generateAbort = useRef<AbortController | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [storageLoaded, setStorageLoaded] = useState(false);
@@ -362,6 +374,7 @@ export default function HomePage() {
     setStepsFailed(false);
     setAttachmentError(null);
     setUsedAttachments(null);
+    setStepsModel(null);
 
     let generatedSteps: Step[] = [];
     if (mode === 'auto') {
@@ -370,9 +383,11 @@ export default function HomePage() {
       setGenerating(true);
       setShowResults(false);
       try {
-        const result = await requestSteps(trimmed, urgency, expectedMinutes, attachments, controller.signal);
+        const result = await requestSteps(trimmed, urgency, expectedMinutes, attachments, pasted, controller.signal);
         generatedSteps = result.steps;
-        if (attachments.length > 0) setUsedAttachments({ names: attachments.map(f => f.name), truncated: result.truncated });
+        setStepsModel(result.model);
+        const sources = [...attachments.map(f => f.name), ...(pasted.trim() ? ['pasted text'] : [])];
+        if (sources.length > 0) setUsedAttachments({ names: sources, truncated: result.truncated });
       } catch (error) {
         // Cleared or replaced while the request was running.
         if (controller.signal.aborted) return;
@@ -396,7 +411,7 @@ export default function HomePage() {
     setTimeout(() => {
       resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 100);
-  }, [task, urgency, expectedMinutes, mode, generating, attachments]);
+  }, [task, urgency, expectedMinutes, mode, generating, attachments, pasted]);
 
   const handleAddPreviewStep = useCallback(() => {
     setSteps(prev => [...prev, { text: 'new step', note: null }]);
@@ -424,6 +439,9 @@ export default function HomePage() {
     setGenerating(false);
     setStepsFailed(false);
     setAttachments([]);
+    setPasted('');
+    setShowPaste(false);
+    setStepsModel(null);
     setAttachmentError(null);
     setUsedAttachments(null);
     setShowResults(false);
@@ -495,7 +513,7 @@ export default function HomePage() {
     try {
       const { urgency: current } = agedUrgency(saved, Date.now());
       const files = regenerateFiles?.id === saved.id ? regenerateFiles.files : [];
-      const { steps: newSteps } = await requestSteps(saved.task, current, saved.expectedMinutes, files);
+      const { steps: newSteps } = await requestSteps(saved.task, current, saved.expectedMinutes, files, '');
       setSavedTasks(prev => prev.map(t => t.id === saved.id
         ? { ...t, steps: newSteps, checkedSteps: new Array(newSteps.length).fill(false) }
         : t));
@@ -705,9 +723,38 @@ export default function HomePage() {
                     label="attach instructions"
                     error={attachmentError}
                     onChange={(files, problem) => { setAttachments(files); setAttachmentError(problem); }}
-                  />
+                  >
+                    {!showPaste && (
+                      <button
+                        type="button"
+                        onClick={() => setShowPaste(true)}
+                        className="inline-flex items-center gap-1.5 text-xs font-bold text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        <ClipboardPaste size={14} aria-hidden="true" />
+                        paste text
+                      </button>
+                    )}
+                  </FileAttach>
+                  {showPaste && (
+                    <div className="mt-2">
+                      <textarea
+                        autoFocus
+                        value={pasted}
+                        onChange={e => setPasted(e.target.value)}
+                        maxLength={MAX_PASTED_CHARS}
+                        rows={5}
+                        aria-label="Pasted instructions"
+                        placeholder="Paste instructions, a rubric, or notes"
+                        className="w-full rounded-xl border-2 border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:border-emerald-500 placeholder:text-muted-foreground/60"
+                      />
+                      <div className="flex justify-between text-xs text-muted-foreground font-medium">
+                        <button type="button" onClick={() => { setPasted(''); setShowPaste(false); }} className="hover:text-foreground">remove pasted text</button>
+                        <span className="tabular-nums">{pasted.length.toLocaleString()} / {MAX_PASTED_CHARS.toLocaleString()}</span>
+                      </div>
+                    </div>
+                  )}
                   <p className="text-xs text-muted-foreground mt-1">
-                    Optional. Up to 5 PDF, Word, or text files, 4 MB total. Sent to an AI provider to write your steps. This site doesn&apos;t save them.
+                    Optional. Up to 5 PDF, Word, or text files (4 MB total), or pasted text. Steps are written by {modelName(DEFAULT_STEP_MODEL)}, through Vercel AI Gateway. Anything you add is sent to the AI provider. This site doesn&apos;t save it.
                   </p>
                 </div>
               )}
@@ -762,6 +809,9 @@ export default function HomePage() {
                     </p>
                   )}
                   <div className="border-t border-border mb-4" />
+                  {stepsModel && (
+                    <p className="text-xs font-medium text-muted-foreground -mt-3 mb-5">Written by {modelName(stepsModel)}.</p>
+                  )}
                   {usedAttachments && (
                     <p className="text-xs font-medium text-muted-foreground -mt-3 mb-5">
                       Based on {usedAttachments.names.join(', ')}.
