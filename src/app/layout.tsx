@@ -1,23 +1,24 @@
 import type { Metadata } from "next";
-import { Nunito, Cormorant_Garamond } from "next/font/google";
+import localFont from "next/font/local";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
-const nunito = Nunito({
+const nunito = localFont({
+  src: "./fonts/nunito-latin-wght-normal.woff2",
   variable: "--font-sans",
-  subsets: ["latin"],
-  weight: ["400", "600", "700", "800", "900"],
+  weight: "200 1000",
 });
 
-const cormorant = Cormorant_Garamond({
+const cormorant = localFont({
+  src: "./fonts/cormorant-garamond-latin-wght-normal.woff2",
   variable: "--font-display",
-  subsets: ["latin"],
-  weight: ["400", "600", "700"],
+  weight: "300 700",
 });
 
 export const metadata: Metadata = {
   title: "Get It Together",
   description:
-    "Enter the task you keep avoiding and get a funny, personalized roast that motivates you to actually do it. Plus a step-by-step breakdown so it feels less scary.",
+    "A to-do list that tells you what to do first. Rank tasks by urgency and expected time, then work through one clear next action.",
 };
 
 export default function RootLayout({
@@ -27,7 +28,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${nunito.variable} ${cormorant.variable} h-full antialiased overscroll-y-none`} suppressHydrationWarning>
-      <body className="min-h-full flex flex-col font-sans">{children}</body>
+      <body className="min-h-full flex flex-col font-sans">
+        {children}
+        <Analytics />
+      </body>
     </html>
   );
 }

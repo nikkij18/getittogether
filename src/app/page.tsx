@@ -3,7 +3,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TextDisperse } from '@/components/ui/text-disperse';
-import { Typewriter } from '@/components/ui/typewriter';
 import MorphingArrowButton from '@/components/ui/morphing-arrow-button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScribbleBg } from '@/components/ui/scribble-bg';
@@ -11,42 +10,11 @@ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, us
 import type { DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-
-// ---- Roast Templates ----
-
-const roastsByCategory: Record<string, string[]> = { default: [''] };
-
-function getRoast(task: string): string {
-  const lower = task.toLowerCase();
-  for (const [pattern, roastList] of Object.entries(roastsByCategory)) {
-    if (pattern === 'default') continue;
-    if (new RegExp(pattern, 'i').test(lower)) return pick(roastList);
-  }
-  return pick(roastsByCategory['default']).replace(/\{task\}/g, task);
-}
-
-const closers = [''];
-
-// ---- Task Breakdown Knowledge Base ----
-interface Step {
-  text: string;
-  note: string | null;
-}
-
-type Priority = 'urgent' | 'high' | 'medium' | 'low';
-type TimeEstimate = '10m' | '30m' | '1h' | '2h' | '5h+';
-type SavingStep = { phase: 'priority' } | { phase: 'time'; priority: Priority };
-
-interface SavedTask {
-  id: string;
-  task: string;
-  roast: string;
-  steps: Step[];
-  closer: string;
-  checkedSteps: boolean[];
-  priority: Priority;
-  timeEstimate: TimeEstimate;
-}
+import {
+  PRIORITIES, TIMES, GROUP_LABELS, agedUrgency, groupFor, groupTasks, isFinished, nextAction, normalizeTask, timeLabel,
+} from '@/lib/priority';
+import type { Priority, SavedTask, Step, TimeEstimate } from '@/lib/priority';
+import { getSteps } from '@/lib/steps';
 
 interface ArchivedTask {
   id: string;
@@ -55,194 +23,12 @@ interface ArchivedTask {
   completedAt: number;
 }
 
-const PRIORITIES: { value: Priority; emoji: string; label: string }[] = [
-  { value: 'urgent', emoji: '', label: 'urgent' },
-  { value: 'high',   emoji: '', label: 'high'   },
-  { value: 'medium', emoji: '', label: 'medium' },
-  { value: 'low',    emoji: '', label: 'low'    },
-];
-const TIMES: { value: TimeEstimate; label: string }[] = [
-  { value: '10m',  label: '10 min' },
-  { value: '30m',  label: '30 min' },
-  { value: '1h',   label: '1 hr'   },
-  { value: '2h',   label: '2 hrs'  },
-  { value: '5h+',  label: '5+ hrs' },
-];
-const PRIORITY_WEIGHT: Record<Priority, number>      = { urgent: 4, high: 3, medium: 2, low: 1 };
-const TIME_WEIGHT:     Record<TimeEstimate, number>  = { '10m': 1, '30m': 2, '1h': 3, '2h': 4, '5h+': 5 };
-const PRIORITY_COLOR:  Record<Priority, string> = {
+const PRIORITY_COLOR: Record<Priority, string> = {
   urgent: 'text-red-500',
-  high:   'text-orange-500',
+  high: 'text-orange-500',
   medium: 'text-yellow-600',
-  low:    'text-emerald-500',
+  low: 'text-emerald-500',
 };
-
-const taskBreakdowns: Record<string, Step[]> = {
-  'financial aid|fafsa|scholarship|grant': [
-    { text: "Gather your documents first — tax returns, W-2s, bank statements. Pile 'em up.", note: "check last year's return for reference" },
-    { text: "Log into the portal/website and create an account (or recover your password for the 5th time)", note: "we've all been there" },
-    { text: "Fill out the personal info section — name, address, the easy stuff. Quick wins.", note: null },
-    { text: "Tackle the income section using the docs you gathered. Copy the numbers. Don't overthink.", note: null },
-    { text: "Answer the school-specific questions if there are any", note: "usually just drop-downs, you've got this" },
-    { text: "Review everything once, hit submit, and do a little victory dance", note: null },
-  ],
-  'tax|taxes|irs|1040|w-2|w2': [
-    { text: "Gather all your forms — W-2s, 1099s, any deduction receipts. Make a lil pile.", note: "check email for digital copies too" },
-    { text: "Pick your filing method: TurboTax, FreeTaxUSA, CPA, or IRS Free File", note: null },
-    { text: "Enter your personal info and filing status", note: "the warm-up round" },
-    { text: "Input your income from each form, one at a time", note: null },
-    { text: "Go through deductions and credits — student loans, donations, etc.", note: "free money you might be forgetting" },
-    { text: "Review the summary, e-file, and BREATHE. You did it.", note: null },
-  ],
-  'clean|cleaning|room|apartment|house|tidy|organize|mess': [
-    { text: "Set a 15-minute timer. That's it. Just 15 minutes to start.", note: "put on a banger playlist" },
-    { text: "Grab a trash bag and do a quick sweep — toss the obvious trash first", note: null },
-    { text: "Collect all the dishes and bring them to the sink", note: null },
-    { text: "Pick up clothes — dirty ones in the hamper, clean ones folded/hung", note: "the floor is NOT a shelf" },
-    { text: "Wipe down surfaces — desk, nightstand, counters. Just a quick pass.", note: null },
-    { text: "If you somehow still have energy, vacuum/sweep. Otherwise, celebrate. You did the thing.", note: null },
-  ],
-  'email|emails|reply|respond|inbox|message': [
-    { text: "Open your inbox. Don't scroll. Find THE email.", note: "you know the one" },
-    { text: "Read it one more time so you actually know what they're asking", note: null },
-    { text: "Draft a response — it does NOT have to be perfect. Just answer the question.", note: "3-5 sentences is plenty" },
-    { text: "Re-read your draft once for typos and tone", note: null },
-    { text: "Hit send. Close the tab. Do NOT second-guess it.", note: "it's sent. it's done. move on." },
-  ],
-  'doctor|dentist|appointment|medical|health|therapist|checkup|eye|optometrist': [
-    { text: "Find the number or website for the office. Google it if needed.", note: "or check your insurance portal" },
-    { text: "Call or go online to book. Morning slots = less overthinking time.", note: null },
-    { text: "Put it in your calendar RIGHT NOW with a reminder for the day before", note: null },
-    { text: "If there's paperwork to fill out beforehand, do it today while you're in the zone", note: null },
-    { text: "That's literally it. You just need to make one call/click. That's the whole task.", note: null },
-  ],
-  'study|studying|exam|test|homework|assignment|essay|paper|project|presentation': [
-    { text: "Pick ONE specific topic or section to focus on — not the whole thing", note: "small bites, not the whole cake" },
-    { text: "Set up your study spot: water, charger, materials. Close social media tabs.", note: null },
-    { text: "Set a 25-minute Pomodoro timer and just START reading/writing", note: "25 min is nothing" },
-    { text: "After 25 min, take a 5-min break. Stretch, snack, exist.", note: null },
-    { text: "Do one or two more rounds. You'll be surprised how much you get done.", note: null },
-    { text: "Review what you did and make a quick list of what's left for next time", note: "progress tracking = serotonin" },
-  ],
-  'resume|cv|job|apply|application|cover letter|interview|linkedin': [
-    { text: "Open your current resume (or a template if starting fresh)", note: "Google Docs has free templates" },
-    { text: "Update your most recent experience first — what did you actually DO?", note: "use action verbs: led, built, created, managed" },
-    { text: "Check the job listing and mirror their language in your bullet points", note: "this is the cheat code" },
-    { text: "Write or update your summary/objective — 2-3 sentences max", note: null },
-    { text: "Proofread, save as PDF, and attach it to the application", note: null },
-    { text: "Hit submit and treat yourself. You're literally investing in your future.", note: null },
-  ],
-  'laundry|clothes|wash|washing': [
-    { text: "Gather ALL the laundry. Check the floor, the chair, the doorknob pile.", note: "yes, that pile counts too" },
-    { text: "Sort into lights and darks (or just throw it all in on cold, we won't judge)", note: null },
-    { text: "Put the first load in. Detergent. Start. Done.", note: "set a phone timer so you don't forget it" },
-    { text: "When it's done, move to dryer (or hang dry if you're fancy)", note: null },
-    { text: "FOLD IT. Don't let it live in the dryer. Fold and put away. Right now.", note: "the dryer is NOT a dresser" },
-  ],
-  'grocery|groceries|shopping|cook|cooking|meal prep|food': [
-    { text: "Check what you already have — fridge, pantry, that one mystery shelf", note: null },
-    { text: "Make a quick list of what you actually need. 10-15 items max.", note: "organized by aisle if you're feeling elite" },
-    { text: "Pick your store or delivery app. No browsing — stick to the list.", note: null },
-    { text: "Go get the stuff (or hit 'order' on the app)", note: null },
-    { text: "Put everything away when you get home. Yes, immediately.", note: "future you is literally cheering right now" },
-  ],
-  'exercise|workout|gym|run|running|yoga|walk': [
-    { text: "Put on your workout clothes. That's step one. Just the clothes.", note: "you're already 50% there honestly" },
-    { text: "Pick a super short workout or route — 15-20 min max", note: "YouTube has great free ones" },
-    { text: "Fill a water bottle and put your shoes on", note: null },
-    { text: "Press play on the video / walk out the door / drive to the gym", note: "the hardest 30 seconds of the whole thing" },
-    { text: "Move your body for however long feels good. Even 10 min counts.", note: "done is better than perfect" },
-  ],
-  'bill|bills|pay|payment|rent|utilities|subscription': [
-    { text: "Make a list of what's due — check email, bank app, or that stack of mail", note: null },
-    { text: "Log into each account or open your bank's bill pay", note: null },
-    { text: "Pay them one at a time. Start with the most urgent.", note: "auto-pay is your best friend for next time" },
-    { text: "Confirm each payment went through", note: null },
-    { text: "Set up auto-pay or calendar reminders so you never have to do this panic again", note: null },
-  ],
-};
-
-const genericSteps: Step[] = [
-  { text: "Open up whatever you need — the website, doc, app, or form. Just open it.", note: "opening it is the first domino" },
-  { text: "Spend 2 minutes figuring out what info or materials you need to gather", note: null },
-  { text: "Set a timer for 15 minutes and just START. No perfection, just action.", note: "you can do anything for 15 min" },
-  { text: "Focus on the first small piece. Don't look at the whole mountain — just the next step.", note: null },
-  { text: "After your timer goes off, take a 5-min break, then do another round if needed", note: null },
-  { text: "Once you're done (or done enough for today), save your progress and reward yourself", note: "you literally earned it" },
-];
-
-function pick<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
-
-function getSteps(task: string): Step[] {
-  const lower = task.toLowerCase();
-  for (const [pattern, steps] of Object.entries(taskBreakdowns)) {
-    const regex = new RegExp(pattern, 'i');
-    if (regex.test(lower)) return steps;
-  }
-  return genericSteps;
-}
-
-// ---- Confetti ----
-function fireConfetti(canvas: HTMLCanvasElement) {
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
-
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-
-  const colors = ['#4ade80', '#22d3ee', '#a78bfa', '#f472b6', '#facc15', '#34d399', '#818cf8'];
-  const pieces: Array<{
-    x: number; y: number; w: number; h: number;
-    color: string; vx: number; vy: number; rot: number; vr: number;
-    opacity: number;
-  }> = [];
-
-  for (let i = 0; i < 120; i++) {
-    pieces.push({
-      x: canvas.width / 2 + (Math.random() - 0.5) * 200,
-      y: canvas.height / 2,
-      w: Math.random() * 8 + 4,
-      h: Math.random() * 6 + 2,
-      color: colors[Math.floor(Math.random() * colors.length)],
-      vx: (Math.random() - 0.5) * 18,
-      vy: Math.random() * -16 - 4,
-      rot: Math.random() * 360,
-      vr: (Math.random() - 0.5) * 12,
-      opacity: 1,
-    });
-  }
-
-  let frame = 0;
-  const maxFrames = 90;
-
-  function animate() {
-    if (frame > maxFrames) {
-      ctx!.clearRect(0, 0, canvas.width, canvas.height);
-      return;
-    }
-    ctx!.clearRect(0, 0, canvas.width, canvas.height);
-    for (const p of pieces) {
-      p.x += p.vx;
-      p.y += p.vy;
-      p.vy += 0.4;
-      p.rot += p.vr;
-      p.opacity = Math.max(0, 1 - frame / maxFrames);
-      ctx!.save();
-      ctx!.translate(p.x, p.y);
-      ctx!.rotate((p.rot * Math.PI) / 180);
-      ctx!.globalAlpha = p.opacity;
-      ctx!.fillStyle = p.color;
-      ctx!.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
-      ctx!.restore();
-    }
-    frame++;
-    requestAnimationFrame(animate);
-  }
-  animate();
-}
-
 
 // ---- Dark mode hook ----
 function useDarkMode() {
@@ -291,16 +77,48 @@ function SortableStep({ id, children }: { id: string; children: React.ReactNode 
   );
 }
 
+// ---- Single-choice row for urgency and time ----
+function ChoiceRow<T extends string>({ label, options, value, onChange, missing }: {
+  label: string;
+  options: { value: T; label: string }[];
+  value: T | null;
+  onChange: (value: T) => void;
+  missing?: boolean;
+}) {
+  return (
+    <div role="radiogroup" aria-label={label}>
+      <span className={`block text-xs font-bold mb-1.5 ${missing ? 'text-red-500' : 'text-muted-foreground'}`}>
+        {missing ? `choose ${label}` : label}
+      </span>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map(option => (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={value === option.value}
+            onClick={() => onChange(option.value)}
+            className={`px-3 py-2 rounded-full border-2 text-xs font-bold transition-colors cursor-pointer ${
+              value === option.value
+                ? 'border-emerald-500 bg-emerald-500 text-white'
+                : 'border-border bg-card text-foreground hover:border-emerald-400'
+            }`}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ============================================================
 // Main Page Component
 // ============================================================
 export default function HomePage() {
   const [task, setTask] = useState('');
-  const [roast, setRoast] = useState('');
   const [steps, setSteps] = useState<Step[]>([]);
-  const [closer, setCloser] = useState('');
   const [showResults, setShowResults] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [heroHovered, setHeroHovered] = useState(false);
   const [checkedSteps, setCheckedSteps] = useState<boolean[]>([]);
@@ -308,18 +126,19 @@ export default function HomePage() {
   const [savedTasks, setSavedTasks] = useState<SavedTask[]>([]);
   const [archivedTasks, setArchivedTasks] = useState<ArchivedTask[]>([]);
   const [showArchive, setShowArchive] = useState(false);
-  const [savingStep, setSavingStep] = useState<SavingStep | null>(null);
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
   const [userName, setUserName] = useState('');
   const [showNamePrompt, setShowNamePrompt] = useState(false);
   const [nameInput, setNameInput] = useState('');
+  const [draftTask, setDraftTask] = useState('');
   const [showClearConfirm, setShowClearConfirm] = useState(false);
-  const roastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [urgency, setUrgency] = useState<Priority | null>(null);
+  const [timeEstimate, setTimeEstimate] = useState<TimeEstimate | null>(null);
+  const [showMissing, setShowMissing] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
   const taskListRef = useRef<HTMLDivElement>(null);
-  const currentTask = useRef('');
   const { dark, toggle } = useDarkMode();
 
   const sensors = useSensors(
@@ -352,7 +171,7 @@ export default function HomePage() {
   useEffect(() => {
     try {
       const stored = localStorage.getItem('git-tasklist');
-      if (stored) setSavedTasks(JSON.parse(stored));
+      if (stored) setSavedTasks((JSON.parse(stored) as Record<string, unknown>[]).map(normalizeTask));
       const storedArchive = localStorage.getItem('git-archive');
       if (storedArchive) setArchivedTasks(JSON.parse(storedArchive));
       const storedName = localStorage.getItem('git-username');
@@ -363,6 +182,11 @@ export default function HomePage() {
       }
     } catch {}
   }, []);
+  // Aging depends on the clock, so a tab left open still re-ranks.
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 3_600_000);
+    return () => clearInterval(timer);
+  }, []);
   useEffect(() => {
     localStorage.setItem('git-tasklist', JSON.stringify(savedTasks));
   }, [savedTasks]);
@@ -371,41 +195,38 @@ export default function HomePage() {
   }, [archivedTasks]);
 
   const handleArchiveTask = useCallback((taskId: string) => {
-    setSavedTasks(prev => {
-      const task = prev.find(t => t.id === taskId);
-      if (!task) return prev;
-      setArchivedTasks(a => [...a, {
-        id: taskId,
-        task: task.task,
-        stepCount: task.steps.length,
-        completedAt: Date.now(),
-      }]);
-      return prev.filter(t => t.id !== taskId);
-    });
-    if (canvasRef.current) fireConfetti(canvasRef.current);
-  }, []);
+    const task = savedTasks.find(t => t.id === taskId);
+    if (!task) return;
+    const completedAt = Date.now();
+    setArchivedTasks(prev => [...prev, {
+      id: taskId,
+      task: task.task,
+      stepCount: task.steps.length,
+      completedAt,
+    }]);
+    setSavedTasks(prev => prev.filter(t => t.id !== taskId));
+  }, [savedTasks]);
 
-  const doRoast = useCallback((taskText: string) => {
-    const trimmed = taskText.trim();
+  const handleGenerate = useCallback(() => {
+    const trimmed = task.trim();
     if (!trimmed) {
       inputRef.current?.focus();
       return;
     }
-    currentTask.current = trimmed;
-    setLoading(true);
-    roastTimer.current = setTimeout(() => {
-      setRoast(getRoast(trimmed));
-      const generatedSteps = mode === 'auto' ? getSteps(trimmed) : [];
-      setSteps(generatedSteps);
-      setCloser(pick(closers));
-      setShowResults(true);
-      setLoading(false);
-      setCheckedSteps(new Array(generatedSteps.length).fill(false));
-      setTimeout(() => {
-        resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 100);
-    }, 1000);
-  }, [mode]);
+    if (!urgency || !timeEstimate) {
+      setShowMissing(true);
+      return;
+    }
+    setShowMissing(false);
+    setDraftTask(trimmed);
+    const generatedSteps = mode === 'auto' ? getSteps(trimmed) : [];
+    setSteps(generatedSteps);
+    setShowResults(true);
+    setCheckedSteps(new Array(generatedSteps.length).fill(false));
+    setTimeout(() => {
+      resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+  }, [task, urgency, timeEstimate, mode]);
 
   const handleAddPreviewStep = useCallback(() => {
     setSteps(prev => [...prev, { text: 'new step', note: null }]);
@@ -423,38 +244,38 @@ export default function HomePage() {
 
   const handleCopy = useCallback(() => {
     const text = steps.map((s, i) => `${i + 1}. ${s.text}`).join('\n');
-    navigator.clipboard.writeText(`Steps to: ${currentTask.current}\n\n${text}`);
+    navigator.clipboard.writeText(`Steps to: ${draftTask}\n\n${text}`);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
-  }, [steps]);
+  }, [steps, draftTask]);
 
-  const handleNew = useCallback(() => {
+  const resetDraft = useCallback(() => {
     setShowResults(false);
     setTask('');
     setCheckedSteps([]);
+    setUrgency(null);
+    setTimeEstimate(null);
+    setShowMissing(false);
+  }, []);
+
+  const handleNew = useCallback(() => {
+    resetDraft();
     setTimeout(() => {
       inputRef.current?.focus();
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }, 100);
-  }, []);
+  }, [resetDraft]);
 
   // Reset the page to its first-visit state. The theme preference is kept.
   const handleClearAll = useCallback(() => {
-    if (roastTimer.current) clearTimeout(roastTimer.current);
-    currentTask.current = '';
-    setTask('');
-    setRoast('');
+    setDraftTask('');
+    resetDraft();
     setSteps([]);
-    setCloser('');
-    setCheckedSteps([]);
-    setShowResults(false);
-    setLoading(false);
     setCopied(false);
     setMode('auto');
     setSavedTasks([]);
     setArchivedTasks([]);
     setShowArchive(false);
-    setSavingStep(null);
     setExpandedTasks(new Set());
     setUserName('');
     setNameInput('');
@@ -462,29 +283,37 @@ export default function HomePage() {
     setShowClearConfirm(false);
     setShowNamePrompt(true);
     window.scrollTo({ top: 0 });
-  }, []);
+  }, [resetDraft]);
 
-  const handleSaveTask = useCallback((taskName: string, taskRoast: string, taskSteps: Step[], taskCloser: string, priority: Priority, timeEstimate: TimeEstimate) => {
-    setSavedTasks(prev => {
-      const newTask: SavedTask = {
-        id: Date.now().toString(),
-        task: taskName,
-        roast: taskRoast,
-        steps: taskSteps,
-        closer: taskCloser,
-        checkedSteps: new Array(taskSteps.length).fill(false),
-        priority,
-        timeEstimate,
-      };
-      return [...prev, newTask];
-    });
-    setSavingStep(null);
-    setShowResults(false);
-    setTask('');
-    setCheckedSteps([]);
+  const handleSaveTask = useCallback(() => {
+    if (!urgency || !timeEstimate) return;
+    const savedAt = Date.now();
+    const newTask: SavedTask = {
+      id: savedAt.toString(),
+      task: draftTask,
+      steps,
+      checkedSteps,
+      priority: urgency,
+      timeEstimate,
+      urgencySetAt: savedAt,
+    };
+    setSavedTasks(prev => [...prev, newTask]);
+    setNow(savedAt);
+    resetDraft();
     setTimeout(() => {
       taskListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 200);
+  }, [draftTask, urgency, timeEstimate, steps, checkedSteps, resetDraft]);
+
+  // Setting urgency by hand is a reassessment, so the aging clock restarts.
+  const handleSetTaskUrgency = useCallback((taskId: string, priority: Priority) => {
+    const changedAt = Date.now();
+    setNow(changedAt);
+    setSavedTasks(prev => prev.map(t => t.id === taskId ? { ...t, priority, urgencySetAt: changedAt } : t));
+  }, []);
+
+  const handleSetTaskTime = useCallback((taskId: string, time: TimeEstimate) => {
+    setSavedTasks(prev => prev.map(t => t.id === taskId ? { ...t, timeEstimate: time } : t));
   }, []);
 
   const handleEditTaskName = useCallback((taskId: string, newName: string) => {
@@ -505,7 +334,6 @@ export default function HomePage() {
       if (t.id !== taskId) return t;
       const updated = [...t.checkedSteps];
       updated[stepIdx] = !updated[stepIdx];
-      if (updated.every(Boolean) && canvasRef.current) fireConfetti(canvasRef.current);
       return { ...t, checkedSteps: updated };
     }));
   }, []);
@@ -534,20 +362,14 @@ export default function HomePage() {
     }));
   }, []);
 
-  // Fire confetti when every step in the preview is checked off
-  useEffect(() => {
-    if (checkedSteps.length > 0 && checkedSteps.every(Boolean)) {
-      if (canvasRef.current) fireConfetti(canvasRef.current);
-    }
-  }, [checkedSteps]);
+  const taskGroups = groupTasks(savedTasks, now);
+  const finishedTasks = savedTasks.filter(isFinished);
+  const next = nextAction(savedTasks, now);
 
   return (
     <>
       {/* overflow-clip stops the scribble background extending the page past the footer */}
       <div className="relative overflow-clip">
-      {/* Confetti canvas */}
-      <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-50 w-full h-full" />
-
       {/* Dark mode toggle */}
       <button
         onClick={toggle}
@@ -652,16 +474,7 @@ export default function HomePage() {
             className="mb-6"
           >
             <div className="text-4xl md:text-5xl font-bold text-foreground text-center mb-4 whitespace-nowrap [font-family:var(--font-display)]">
-              I&apos;m avoiding{' '}
-              <Typewriter
-                text={['leg day', 'filing taxes', 'my essay', 'laundry']}
-                speed={65}
-                deleteSpeed={35}
-                waitTime={1800}
-                cursorChar="..."
-                className="text-emerald-500"
-                cursorClassName=""
-              />
+              What needs doing?
             </div>
 
             <div className="flex gap-3 p-2 bg-card border-2 border-border rounded-3xl shadow-lg transition-all focus-within:border-emerald-500">
@@ -670,12 +483,19 @@ export default function HomePage() {
                 type="text"
                 value={task}
                 onChange={e => setTask(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && doRoast(task)}
-                placeholder="What are you avoiding?"
+                onKeyDown={e => e.key === 'Enter' && handleGenerate()}
+                placeholder="e.g. File my taxes"
+                aria-label="Task"
                 maxLength={120}
                 className="flex-1 bg-transparent border-none outline-none text-foreground font-semibold px-4 py-3 placeholder:text-muted-foreground/50"
               />
-              <MorphingArrowButton onClick={() => doRoast(task)} disabled={loading} />
+              <MorphingArrowButton onClick={handleGenerate} />
+            </div>
+
+            {/* Urgency and time drive both the ranking and the steps */}
+            <div className="mt-4 space-y-3 px-1">
+              <ChoiceRow label="urgency" options={PRIORITIES} value={urgency} onChange={setUrgency} missing={showMissing && !urgency} />
+              <ChoiceRow label="expected time" options={TIMES} value={timeEstimate} onChange={setTimeEstimate} missing={showMissing && !timeEstimate} />
             </div>
 
             {/* Mode toggle */}
@@ -714,10 +534,15 @@ export default function HomePage() {
                   transition={{ duration: 0.4, delay: 0.1 }}
                   className="bg-card border-2 border-emerald-200 dark:border-emerald-900/50 rounded-2xl p-6 shadow-lg"
                 >
-                  <p className="text-foreground font-bold text-base md:text-lg leading-relaxed mb-5">{roast}</p>
+                  <p className="text-foreground font-bold text-base md:text-lg leading-relaxed">{draftTask}</p>
+                  {urgency && timeEstimate && (
+                    <p className="text-xs font-bold text-muted-foreground mt-1 mb-5">
+                      {GROUP_LABELS[groupFor(urgency, timeEstimate)]}: {urgency}, {timeLabel(timeEstimate)}
+                    </p>
+                  )}
                   <div className="border-t border-border mb-4" />
                   {steps.length === 0 && mode === 'custom' && (
-                    <p className="text-muted-foreground text-sm italic text-center py-2">no steps yet — add your own below</p>
+                    <p className="text-muted-foreground text-sm italic text-center py-2">no steps yet. add the first one below.</p>
                   )}
                   <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleReorderPreviewSteps}>
                     <SortableContext items={steps.map((_, i) => `preview-step-${i}`)} strategy={verticalListSortingStrategy}>
@@ -765,9 +590,6 @@ export default function HomePage() {
                                 >
                                   {step.text}
                                 </motion.span>
-                                {step.note && (
-                                  <span className="block text-xs text-muted-foreground italic mt-0.5">{step.note}</span>
-                                )}
                               </div>
                               {mode === 'custom' && (
                                 <button
@@ -802,63 +624,19 @@ export default function HomePage() {
                   transition={{ delay: 0.6, duration: 0.3 }}
                   className="space-y-3"
                 >
-                  <AnimatePresence mode="wait">
-                    {savingStep === null ? (
-                      <motion.div key="buttons" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex gap-3 flex-wrap">
-                        <button onClick={handleCopy} className="flex-1 min-w-fit px-4 py-3 bg-card border-2 border-border rounded-xl text-sm font-bold text-foreground transition-all hover:border-muted-foreground hover:bg-secondary hover:-translate-y-0.5">
-                          {copied ? 'copied!' : 'copy steps'}
-                        </button>
-                        <button onClick={() => setSavingStep({ phase: 'priority' })} className="flex-1 min-w-fit px-4 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 border-2 border-transparent rounded-xl text-sm font-bold text-white transition-all hover:shadow-lg hover:-translate-y-0.5">
-                          + save to list
-                        </button>
-                        <button onClick={handleNew} className="flex-1 min-w-fit px-4 py-3 bg-card border-2 border-border rounded-xl text-sm font-bold text-foreground transition-all hover:border-muted-foreground hover:bg-secondary hover:-translate-y-0.5">
-                          new task
-                        </button>
-                      </motion.div>
-                    ) : savingStep.phase === 'priority' ? (
-                      <motion.div key="priority" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="bg-card border-2 border-border rounded-xl p-4 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-extrabold uppercase tracking-wider text-muted-foreground">how urgent is it?</span>
-                          <button onClick={() => setSavingStep(null)} className="text-muted-foreground hover:text-foreground text-xs">✕</button>
-                        </div>
-                        <div className="flex gap-2 flex-wrap">
-                          {PRIORITIES.map(p => (
-                            <button key={p.value} onClick={() => setSavingStep({ phase: 'time', priority: p.value })}
-                              className="flex items-center gap-1.5 px-4 py-2 rounded-full border-2 border-border bg-secondary text-sm font-bold text-foreground hover:border-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950 transition-all">
-                              <span>{p.emoji}</span><span>{p.label}</span>
-                            </button>
-                          ))}
-                        </div>
-                      </motion.div>
-                    ) : (
-                      <motion.div key="time" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="bg-card border-2 border-border rounded-xl p-4 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-extrabold uppercase tracking-wider text-muted-foreground">how long will it take?</span>
-                          <button onClick={() => setSavingStep(null)} className="text-muted-foreground hover:text-foreground text-xs">✕</button>
-                        </div>
-                        <div className="flex gap-2 flex-wrap">
-                          {TIMES.map(t => (
-                            <button key={t.value}
-                              onClick={() => handleSaveTask(currentTask.current, roast, steps, closer, savingStep.priority, t.value)}
-                              className="px-4 py-2 rounded-full border-2 border-border bg-secondary text-sm font-bold text-foreground hover:border-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950 transition-all">
-                              {t.label}
-                            </button>
-                          ))}
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                  <div className="flex gap-3 flex-wrap">
+                    <button onClick={handleCopy} className="flex-1 min-w-fit px-4 py-3 bg-card border-2 border-border rounded-xl text-sm font-bold text-foreground transition-all hover:border-muted-foreground hover:bg-secondary hover:-translate-y-0.5">
+                      {copied ? 'copied' : 'copy steps'}
+                    </button>
+                    <button onClick={handleSaveTask} className="flex-1 min-w-fit px-4 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 border-2 border-transparent rounded-xl text-sm font-bold text-white transition-all hover:shadow-lg hover:-translate-y-0.5">
+                      save to list
+                    </button>
+                    <button onClick={handleNew} className="flex-1 min-w-fit px-4 py-3 bg-card border-2 border-border rounded-xl text-sm font-bold text-foreground transition-all hover:border-muted-foreground hover:bg-secondary hover:-translate-y-0.5">
+                      new task
+                    </button>
+                  </div>
                 </motion.div>
 
-                {/* Motivational closer */}
-                <motion.p
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.8, duration: 0.4 }}
-                  className="text-center text-emerald-600 dark:text-emerald-400 font-bold text-lg italic pt-2"
-                >
-                  {closer}
-                </motion.p>
               </motion.div>
             )}
           </AnimatePresence>
@@ -883,13 +661,33 @@ export default function HomePage() {
                 <span className="text-xs font-bold text-muted-foreground">{savedTasks.length} task{savedTasks.length !== 1 ? 's' : ''}</span>
               </div>
 
-              {[...savedTasks].sort((a, b) => {
-                const scoreA = PRIORITY_WEIGHT[a.priority] * 5 - TIME_WEIGHT[a.timeEstimate];
-                const scoreB = PRIORITY_WEIGHT[b.priority] * 5 - TIME_WEIGHT[b.timeEstimate];
-                return scoreB - scoreA;
-              }).map(t => {
+              {/* The one thing to do next */}
+              {next && (
+                <div className="mb-6 p-5 rounded-lg border-2 border-emerald-500 bg-card">
+                  <h3 className="text-xs font-bold text-emerald-600 dark:text-emerald-400 mb-2">next action</h3>
+                  {next.stepIndex >= 0 ? (
+                    <label className="flex gap-3 items-start cursor-pointer">
+                      <Checkbox
+                        checked={false}
+                        onCheckedChange={() => handleToggleSavedStep(next.task.id, next.stepIndex)}
+                        className="mt-0.5 flex-shrink-0"
+                      />
+                      <span className="font-bold text-foreground text-base leading-snug">{next.task.steps[next.stepIndex].text}</span>
+                    </label>
+                  ) : (
+                    <p className="font-bold text-foreground text-base leading-snug">Add a first step.</p>
+                  )}
+                  <p className="text-xs text-muted-foreground font-medium mt-2">{next.task.task}. {next.reason}.</p>
+                </div>
+              )}
+
+              {taskGroups.map(({ group, label, tasks: groupedTasks }) => (
+              <div key={group} className="space-y-2 pt-3">
+              <h3 className="text-xs font-bold text-muted-foreground">{label}</h3>
+              {groupedTasks.map(t => {
                 const doneCount = t.checkedSteps.filter(Boolean).length;
-                const allDone = doneCount === t.steps.length;
+                const allDone = isFinished(t);
+                const aged = agedUrgency(t, now);
                 return (
                   <motion.div
                     key={t.id}
@@ -940,15 +738,19 @@ export default function HomePage() {
                           >{t.task}</motion.p>
                         </div>
                         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                          <span className={`text-xs font-bold ${PRIORITY_COLOR[t.priority]}`}>
-                            {PRIORITIES.find(p => p.value === t.priority)?.emoji} {t.priority}
-                          </span>
+                          <span className={`text-xs font-bold ${PRIORITY_COLOR[aged.urgency]}`}>{aged.urgency}</span>
                           <span className="text-xs text-muted-foreground">·</span>
-                          <span className="text-xs text-muted-foreground font-medium">{t.timeEstimate}</span>
+                          <span className="text-xs text-muted-foreground font-medium">{timeLabel(t.timeEstimate)}</span>
                           <span className="text-xs text-muted-foreground">·</span>
                           <span className="text-xs text-muted-foreground font-medium">
-                            {allDone ? '✓ all done!' : `${doneCount}/${t.steps.length} steps`}
+                            {doneCount}/{t.steps.length} steps
                           </span>
+                          {aged.movedUp && (
+                            <>
+                              <span className="text-xs text-muted-foreground">·</span>
+                              <span className="text-xs text-muted-foreground font-medium">moved up: waiting {aged.daysWaiting} days</span>
+                            </>
+                          )}
                         </div>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
@@ -983,11 +785,16 @@ export default function HomePage() {
                           className="overflow-hidden"
                         >
                           <div className="pt-4 space-y-4">
+                            <div className="space-y-3">
+                              <ChoiceRow label="urgency" options={PRIORITIES} value={aged.urgency} onChange={p => handleSetTaskUrgency(t.id, p)} />
+                              <ChoiceRow label="expected time" options={TIMES} value={t.timeEstimate} onChange={time => handleSetTaskTime(t.id, time)} />
+                            </div>
+
                             {/* Progress bar */}
                             <div className="w-full h-1 bg-border rounded-full overflow-hidden">
                               <motion.div
                                 className="h-full bg-gradient-to-r from-emerald-400 to-teal-500 rounded-full"
-                                animate={{ width: `${(doneCount / t.steps.length) * 100}%` }}
+                                animate={{ width: `${t.steps.length ? (doneCount / t.steps.length) * 100 : 0}%` }}
                                 transition={{ duration: 0.4, ease: 'easeOut' }}
                               />
                             </div>
@@ -1035,9 +842,6 @@ export default function HomePage() {
                                           >
                                             {step.text}
                                           </motion.span>
-                                          {step.note && (
-                                            <span className="block text-xs text-muted-foreground italic mt-0.5">{step.note}</span>
-                                          )}
                                         </div>
                                         <button
                                           onClick={() => handleDeleteStep(t.id, i)}
@@ -1060,29 +864,17 @@ export default function HomePage() {
                               add step
                             </button>
 
-                            {/* Archive CTA when all done */}
-                            <AnimatePresence>
-                              {allDone && (
-                                <motion.div
-                                  initial={{ opacity: 0, y: 8 }}
-                                  animate={{ opacity: 1, y: 0 }}
-                                  exit={{ opacity: 0 }}
-                                  transition={{ duration: 0.4, delay: 0.3 }}
-                                  className="mt-4 pt-4 border-t border-emerald-200 dark:border-emerald-900/40 flex items-center justify-between gap-3"
+                            {/* Tasks with no steps can be completed directly */}
+                            {(allDone || t.steps.length === 0) && (
+                              <div className="mt-4 pt-4 border-t border-border flex justify-end">
+                                <button
+                                  onClick={() => handleArchiveTask(t.id)}
+                                  className="px-4 py-2 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-extrabold transition-colors"
                                 >
-                                  <p className="text-sm font-bold text-emerald-700 dark:text-emerald-400">
-                                    you actually did it.
-                                  </p>
-                                  <button
-                                    onClick={() => handleArchiveTask(t.id)}
-                                    className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-extrabold transition-all hover:shadow-md hover:-translate-y-0.5 active:scale-95"
-                                  >
-                                    archive this win
-                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                                  </button>
-                                </motion.div>
-                              )}
-                            </AnimatePresence>
+                                  mark complete
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </motion.div>
                       )}
@@ -1092,19 +884,26 @@ export default function HomePage() {
                 );
               })}
 
-              {/* Closer — shown below all tasks when any task is fully done */}
-              <AnimatePresence>
-                {savedTasks.some(t => t.checkedSteps.length > 0 && t.checkedSteps.every(Boolean)) && (
-                  <motion.p
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    className="text-emerald-600 dark:text-emerald-400 font-bold text-sm italic text-center pt-4"
-                  >
-                    {savedTasks.find(t => t.checkedSteps.length > 0 && t.checkedSteps.every(Boolean))?.closer}
-                  </motion.p>
-                )}
-              </AnimatePresence>
+              </div>
+              ))}
+
+              {/* Every step checked, waiting to be marked complete */}
+              {finishedTasks.length > 0 && (
+                <div className="space-y-2 pt-3">
+                  <h3 className="text-xs font-bold text-muted-foreground">all steps done</h3>
+                  {finishedTasks.map(t => (
+                    <div key={t.id} className="bg-card border-2 border-border rounded-lg p-4 flex items-center justify-between gap-3">
+                      <span className="font-bold text-sm text-foreground line-through decoration-zinc-400">{t.task}</span>
+                      <button
+                        onClick={() => handleArchiveTask(t.id)}
+                        className="flex-shrink-0 px-4 py-2 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-extrabold transition-colors"
+                      >
+                        mark complete
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </motion.section>
         )}
@@ -1127,7 +926,7 @@ export default function HomePage() {
                 className="w-full flex items-center justify-between mb-3 group"
               >
                 <div className="flex items-center gap-2">
-                  <span className="text-base font-bold text-zinc-400 dark:text-zinc-500 tracking-wide">hall of fame</span>
+                  <span className="text-base font-bold text-zinc-400 dark:text-zinc-500 tracking-wide">completed</span>
                   <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 text-xs font-extrabold">
                     {archivedTasks.length}
                   </span>
@@ -1155,7 +954,7 @@ export default function HomePage() {
                     {/* Stats banner */}
                     <div className="mb-4 p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 text-center">
                       <p className="text-2xl font-extrabold text-emerald-700 dark:text-emerald-400 [font-family:var(--font-display)]">
-                        {archivedTasks.length} {archivedTasks.length === 1 ? 'task' : 'tasks'} crushed
+                        {archivedTasks.length} {archivedTasks.length === 1 ? 'task' : 'tasks'} done
                       </p>
                       <p className="text-xs text-emerald-600/70 dark:text-emerald-500/70 font-medium mt-0.5">
                         {archivedTasks.reduce((sum, t) => sum + t.stepCount, 0)} total steps completed
@@ -1215,7 +1014,7 @@ export default function HomePage() {
             exit={{ opacity: 0, y: 20 }}
             className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-foreground text-background px-6 py-3 rounded-xl text-sm font-bold shadow-xl z-50"
           >
-            Copied to clipboard! Now go do the thing.
+            Steps copied.
           </motion.div>
         )}
       </AnimatePresence>
@@ -1245,7 +1044,7 @@ export default function HomePage() {
             >
               <h3 id="clear-confirm-title" className="text-2xl font-bold text-foreground mb-2 [font-family:var(--font-display)]">clear everything?</h3>
               <p id="clear-confirm-description" className="text-sm text-muted-foreground mb-6">
-                This deletes your current task, saved tasks, hall of fame, and name. You can&apos;t undo this.
+                This deletes your current task, saved tasks, completed tasks, and name. You can&apos;t undo this.
               </p>
               <div className="flex items-center justify-end gap-3">
                 <button
