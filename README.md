@@ -9,7 +9,7 @@ Most to-do lists store tasks and leave the hardest decision to you: where to sta
 ## How it works
 
 1. Enter a task, its urgency, and its expected time.
-2. Review the steps, edit them, or write your own.
+2. Get 3-6 AI-written steps fitted to your time, or write your own.
 3. Save the task. The list ranks it and highlights your next action.
 
 ### Prioritization matrix
@@ -29,11 +29,11 @@ Groups appear in this order: Do now, Block today, Next up, Batch, This week, Lat
 
 A task moves up one urgency level for every 3 days it waits, up to two levels. Low stops at high, and medium can reach urgent. Changing a task's urgency by hand restarts the clock.
 
-## Current status
-
-Steps currently come from prewritten lists matched by keyword. AI-written steps are next.
+## Data and limits
 
 Tasks are stored in your browser's `localStorage`. There are no accounts, and tasks don't sync between browsers or devices.
+
+To generate steps, the task, urgency, and expected time are sent to an AI provider through Vercel AI Gateway. The model's providers offer zero data retention and don't train on this data. Spending has a hard monthly cap, and requests are rate limited per visitor.
 
 ## Run it locally
 
@@ -46,6 +46,6 @@ Then open http://localhost:3000.
 
 ## Built with
 
-Next.js, React, TypeScript, Tailwind CSS, Framer Motion, and dnd-kit. Deployed on Vercel.
+Next.js, React, TypeScript, Tailwind CSS, Framer Motion, dnd-kit, and the Vercel AI SDK. Deployed on Vercel.
 
 The matrix and aging rules are in [`src/lib/priority.ts`](src/lib/priority.ts).

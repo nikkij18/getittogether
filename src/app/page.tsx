@@ -14,7 +14,6 @@ import {
   PRIORITIES, TIMES, GROUP_LABELS, agedUrgency, groupFor, groupTasks, isFinished, nextAction, normalizeTask, timeLabel,
 } from '@/lib/priority';
 import type { Priority, SavedTask, Step, TimeEstimate } from '@/lib/priority';
-import { getSteps } from '@/lib/steps';
 
 interface ArchivedTask {
   id: string;
@@ -29,6 +28,18 @@ const PRIORITY_COLOR: Record<Priority, string> = {
   medium: 'text-yellow-600',
   low: 'text-emerald-500',
 };
+
+async function requestSteps(task: string, urgency: Priority, time: TimeEstimate, signal?: AbortSignal): Promise<Step[]> {
+  const response = await fetch('/api/steps', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ task, urgency, time }),
+    signal,
+  });
+  if (!response.ok) throw new Error(`Step generation failed: ${response.status}`);
+  const data: { steps: Step[] } = await response.json();
+  return data.steps;
+}
 
 // ---- Dark mode hook ----
 function useDarkMode() {
@@ -135,6 +146,11 @@ export default function HomePage() {
   const [urgency, setUrgency] = useState<Priority | null>(null);
   const [timeEstimate, setTimeEstimate] = useState<TimeEstimate | null>(null);
   const [showMissing, setShowMissing] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [stepsFailed, setStepsFailed] = useState(false);
+  const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
+  const [regenerateFailedId, setRegenerateFailedId] = useState<string | null>(null);
+  const generateAbort = useRef<AbortController | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
@@ -207,8 +223,9 @@ export default function HomePage() {
     setSavedTasks(prev => prev.filter(t => t.id !== taskId));
   }, [savedTasks]);
 
-  const handleGenerate = useCallback(() => {
+  const handleGenerate = useCallback(async () => {
     const trimmed = task.trim();
+    if (generating) return;
     if (!trimmed) {
       inputRef.current?.focus();
       return;
@@ -218,15 +235,33 @@ export default function HomePage() {
       return;
     }
     setShowMissing(false);
+    setStepsFailed(false);
     setDraftTask(trimmed);
-    const generatedSteps = mode === 'auto' ? getSteps(trimmed) : [];
+
+    let generatedSteps: Step[] = [];
+    if (mode === 'auto') {
+      const controller = new AbortController();
+      generateAbort.current = controller;
+      setGenerating(true);
+      setShowResults(false);
+      try {
+        generatedSteps = await requestSteps(trimmed, urgency, timeEstimate, controller.signal);
+      } catch {
+        // Cleared or replaced while the request was running.
+        if (controller.signal.aborted) return;
+        setMode('custom');
+        setStepsFailed(true);
+      }
+      setGenerating(false);
+    }
+
     setSteps(generatedSteps);
-    setShowResults(true);
     setCheckedSteps(new Array(generatedSteps.length).fill(false));
+    setShowResults(true);
     setTimeout(() => {
       resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 100);
-  }, [task, urgency, timeEstimate, mode]);
+  }, [task, urgency, timeEstimate, mode, generating]);
 
   const handleAddPreviewStep = useCallback(() => {
     setSteps(prev => [...prev, { text: 'new step', note: null }]);
@@ -250,6 +285,9 @@ export default function HomePage() {
   }, [steps, draftTask]);
 
   const resetDraft = useCallback(() => {
+    generateAbort.current?.abort();
+    setGenerating(false);
+    setStepsFailed(false);
     setShowResults(false);
     setTask('');
     setCheckedSteps([]);
@@ -310,6 +348,21 @@ export default function HomePage() {
     const changedAt = Date.now();
     setNow(changedAt);
     setSavedTasks(prev => prev.map(t => t.id === taskId ? { ...t, priority, urgencySetAt: changedAt } : t));
+  }, []);
+
+  const handleRegenerateSteps = useCallback(async (saved: SavedTask) => {
+    setRegeneratingId(saved.id);
+    setRegenerateFailedId(null);
+    try {
+      const { urgency: current } = agedUrgency(saved, Date.now());
+      const newSteps = await requestSteps(saved.task, current, saved.timeEstimate);
+      setSavedTasks(prev => prev.map(t => t.id === saved.id
+        ? { ...t, steps: newSteps, checkedSteps: new Array(newSteps.length).fill(false) }
+        : t));
+    } catch {
+      setRegenerateFailedId(saved.id);
+    }
+    setRegeneratingId(null);
   }, []);
 
   const handleSetTaskTime = useCallback((taskId: string, time: TimeEstimate) => {
@@ -489,7 +542,7 @@ export default function HomePage() {
                 maxLength={120}
                 className="flex-1 bg-transparent border-none outline-none text-foreground font-semibold px-4 py-3 placeholder:text-muted-foreground/50"
               />
-              <MorphingArrowButton onClick={handleGenerate} />
+              <MorphingArrowButton onClick={handleGenerate} disabled={generating} />
             </div>
 
             {/* Urgency and time drive both the ranking and the steps */}
@@ -513,6 +566,10 @@ export default function HomePage() {
                 write my own
               </button>
             </div>
+
+            {generating && (
+              <p role="status" className="text-center text-sm font-semibold text-muted-foreground mt-4">writing steps...</p>
+            )}
 
           </motion.div>
 
@@ -541,7 +598,12 @@ export default function HomePage() {
                     </p>
                   )}
                   <div className="border-t border-border mb-4" />
-                  {steps.length === 0 && mode === 'custom' && (
+                  {stepsFailed && (
+                    <p role="alert" className="text-sm font-semibold text-foreground mb-3">
+                      Steps couldn&apos;t be generated. Write your own below, or switch back to generate steps and try again.
+                    </p>
+                  )}
+                  {steps.length === 0 && mode === 'custom' && !stepsFailed && (
                     <p className="text-muted-foreground text-sm italic text-center py-2">no steps yet. add the first one below.</p>
                   )}
                   <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleReorderPreviewSteps}>
@@ -590,6 +652,9 @@ export default function HomePage() {
                                 >
                                   {step.text}
                                 </motion.span>
+                                {step.minutes != null && (
+                                  <span className="block text-xs text-muted-foreground mt-0.5">{step.minutes} min</span>
+                                )}
                               </div>
                               {mode === 'custom' && (
                                 <button
@@ -842,6 +907,9 @@ export default function HomePage() {
                                           >
                                             {step.text}
                                           </motion.span>
+                                          {step.minutes != null && (
+                                            <span className="block text-xs text-muted-foreground mt-0.5">{step.minutes} min</span>
+                                          )}
                                         </div>
                                         <button
                                           onClick={() => handleDeleteStep(t.id, i)}
@@ -863,6 +931,19 @@ export default function HomePage() {
                               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                               add step
                             </button>
+
+                            <div>
+                              <button
+                                onClick={() => handleRegenerateSteps(t)}
+                                disabled={regeneratingId === t.id}
+                                className="text-xs text-muted-foreground hover:text-emerald-600 transition-colors font-medium disabled:opacity-50"
+                              >
+                                {regeneratingId === t.id ? 'writing steps...' : 'regenerate steps'}
+                              </button>
+                              {regenerateFailedId === t.id && (
+                                <p role="alert" className="text-xs font-semibold text-foreground mt-1">Steps couldn&apos;t be generated. Your current steps are unchanged.</p>
+                              )}
+                            </div>
 
                             {/* Tasks with no steps can be completed directly */}
                             {(allDone || t.steps.length === 0) && (

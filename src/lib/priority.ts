@@ -4,6 +4,7 @@ export type GroupId = 'do-now' | 'block-today' | 'next-up' | 'batch' | 'this-wee
 
 export interface Step {
   text: string;
+  minutes?: number;
   note?: string | null;
 }
 
