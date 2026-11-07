@@ -664,7 +664,7 @@ export default function HomePage() {
               />
             </div>
 
-            <div className="flex gap-3 p-2 bg-card border-2 border-border rounded-3xl shadow-lg transition-all focus-within:border-emerald-500 focus-within:shadow-emerald-500/20 focus-within:shadow-xl">
+            <div className="flex gap-3 p-2 bg-card border-2 border-border rounded-3xl shadow-lg transition-all focus-within:border-emerald-500">
               <input
                 ref={inputRef}
                 type="text"
