@@ -2,18 +2,21 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Paperclip, X } from 'lucide-react';
 import { TextDisperse } from '@/components/ui/text-disperse';
 import MorphingArrowButton from '@/components/ui/morphing-arrow-button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Slider } from '@/components/ui/slider';
+import { Typewriter } from '@/components/ui/typewriter';
 import { ScribbleBg } from '@/components/ui/scribble-bg';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
-  PRIORITIES, TIMES, GROUP_LABELS, agedUrgency, groupFor, groupTasks, isFinished, nextAction, normalizeTask, timeLabel,
+  PRIORITIES, TIME_STOPS, agedUrgency, isFinished, nextAction, normalizeTask, rankTasks, timeLabel,
 } from '@/lib/priority';
-import type { Priority, SavedTask, Step, TimeEstimate } from '@/lib/priority';
+import type { Priority, SavedTask, Step } from '@/lib/priority';
 
 interface ArchivedTask {
   id: string;
@@ -29,17 +32,89 @@ const PRIORITY_COLOR: Record<Priority, string> = {
   low: 'text-emerald-500',
 };
 
-async function requestSteps(task: string, urgency: Priority, time: TimeEstimate, signal?: AbortSignal): Promise<Step[]> {
-  const response = await fetch('/api/steps', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ task, urgency, time }),
-    signal,
-  });
-  if (!response.ok) throw new Error(`Step generation failed: ${response.status}`);
-  const data: { steps: Step[] } = await response.json();
-  return data.steps;
+const MAX_FILES = 5;
+const MAX_TOTAL_BYTES = 4 * 1024 * 1024;
+
+const FILE_ERRORS: Record<string, string> = {
+  files_too_large: 'Those files are over 4 MB combined. Remove one or use smaller files.',
+  too_many_files: `You can attach up to ${MAX_FILES} files.`,
+  unsupported_file: 'Use PDF, Word (.docx), or text files.',
+  unreadable_file: "The text couldn't be read. If it's a scan, try a copy with selectable text.",
+};
+
+class StepsError extends Error {
+  constructor(public code: string, public fileName?: string) {
+    super(code);
+  }
 }
+
+function fileProblemMessage(error: unknown): string | null {
+  if (!(error instanceof StepsError) || !FILE_ERRORS[error.code]) return null;
+  return error.fileName ? `${error.fileName}: ${FILE_ERRORS[error.code]}` : FILE_ERRORS[error.code];
+}
+
+async function requestSteps(task: string, urgency: Priority, minutes: number, files: File[], signal?: AbortSignal) {
+  const body = new FormData();
+  body.set('task', task);
+  body.set('urgency', urgency);
+  body.set('minutes', String(minutes));
+  files.forEach(file => body.append('file', file));
+
+  const response = await fetch('/api/steps', { method: 'POST', body, signal });
+  const data: { steps?: Step[]; truncated?: string[]; error?: string; file?: string } = await response.json().catch(() => ({}));
+  if (!response.ok || !data.steps) throw new StepsError(data.error ?? 'generation_failed', data.file);
+  return { steps: data.steps, truncated: data.truncated ?? [] };
+}
+
+// ---- Optional files with the task's instructions ----
+function FileAttach({ files, onChange, label, error }: {
+  files: File[];
+  onChange: (files: File[], problem: string | null) => void;
+  label: string;
+  error?: string | null;
+}) {
+  const add = (chosen: File[]) => {
+    if (chosen.length === 0) return;
+    const isNew = (file: File) => !files.some(f => f.name === file.name && f.size === file.size);
+    const next = [...files, ...chosen.filter(isNew)];
+    if (next.length > MAX_FILES) return onChange(files, FILE_ERRORS.too_many_files);
+    if (!chosen.every(file => /\.(pdf|docx|txt|md)$/i.test(file.name))) return onChange(files, FILE_ERRORS.unsupported_file);
+    if (next.reduce((total, file) => total + file.size, 0) > MAX_TOTAL_BYTES) return onChange(files, FILE_ERRORS.files_too_large);
+    onChange(next, null);
+  };
+  return (
+    <div>
+      {files.length > 0 && (
+        <ul className="space-y-1 mb-1.5">
+          {files.map(file => (
+            <li key={`${file.name}-${file.size}`} className="flex items-center gap-2 text-xs font-bold text-foreground min-w-0">
+              <Paperclip size={14} className="flex-shrink-0 text-emerald-600" aria-hidden="true" />
+              <span className="truncate">{file.name}</span>
+              <button type="button" onClick={() => onChange(files.filter(f => f !== file), null)} aria-label={`Remove ${file.name}`} className="p-1 text-muted-foreground hover:text-foreground flex-shrink-0">
+                <X size={14} aria-hidden="true" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {files.length < MAX_FILES && (
+        <label className="inline-flex items-center gap-1.5 text-xs font-bold text-muted-foreground hover:text-foreground transition-colors cursor-pointer has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-ring">
+          <Paperclip size={14} aria-hidden="true" />
+          {files.length > 0 ? 'add another file' : label}
+          <input
+            type="file"
+            multiple
+            accept=".pdf,.docx,.txt,.md"
+            className="sr-only"
+            onChange={e => { add(Array.from(e.target.files ?? [])); e.target.value = ''; }}
+          />
+        </label>
+      )}
+      {error && <p role="alert" className="text-xs font-semibold text-red-500 mt-1">{error}</p>}
+    </div>
+  );
+}
+
 
 // ---- Dark mode hook ----
 function useDarkMode() {
@@ -88,7 +163,9 @@ function SortableStep({ id, children }: { id: string; children: React.ReactNode 
   );
 }
 
-// ---- Single-choice row for urgency and time ----
+const TASK_SUGGESTIONS = ['file my taxes', 'finish my essay', 'do laundry', 'go to the gym'];
+
+// ---- Single-choice row for urgency ----
 function ChoiceRow<T extends string>({ label, options, value, onChange, missing }: {
   label: string;
   options: { value: T; label: string }[];
@@ -123,6 +200,43 @@ function ChoiceRow<T extends string>({ label, options, value, onChange, missing 
   );
 }
 
+// ---- Scale slider for expected time ----
+function ScaleSlider<T extends string | number>({ label, stops, value, resting, format, onChange, missing }: {
+  label: string;
+  stops: T[];
+  value: T | null;
+  /** Where the thumb sits before a value is chosen. It doesn't count as a choice. */
+  resting: T;
+  format: (value: T) => string;
+  onChange: (value: T) => void;
+  missing?: boolean;
+}) {
+  const index = stops.indexOf(value ?? resting);
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-2 mb-2">
+        <span className={`text-xs font-bold ${missing ? 'text-red-500' : 'text-muted-foreground'}`}>{missing ? `set ${label}` : label}</span>
+        <output className="text-xs font-bold tabular-nums text-foreground">{value === null ? 'not set' : format(value)}</output>
+      </div>
+      <Slider
+        min={0}
+        max={stops.length - 1}
+        step={1}
+        value={[index]}
+        onValueChange={([next]) => onChange(stops[next])}
+        onPointerUp={() => onChange(stops[index])}
+        thumbLabel={label}
+        thumbValueText={value === null ? 'not set' : format(value)}
+        className={`py-2 cursor-pointer [--primary:var(--color-emerald-500)] ${value === null ? 'opacity-50' : ''}`}
+      />
+      <div className="flex justify-between text-xs text-muted-foreground font-medium" aria-hidden="true">
+        <span>{format(stops[0])}</span>
+        <span>{format(stops[stops.length - 1])}</span>
+      </div>
+    </div>
+  );
+}
+
 // ============================================================
 // Main Page Component
 // ============================================================
@@ -144,14 +258,20 @@ export default function HomePage() {
   const [draftTask, setDraftTask] = useState('');
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [urgency, setUrgency] = useState<Priority | null>(null);
-  const [timeEstimate, setTimeEstimate] = useState<TimeEstimate | null>(null);
+  const [expectedMinutes, setExpectedMinutes] = useState<number | null>(null);
   const [showMissing, setShowMissing] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [stepsFailed, setStepsFailed] = useState(false);
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
   const [regenerateFailedId, setRegenerateFailedId] = useState<string | null>(null);
+  const [regenerateError, setRegenerateError] = useState<string | null>(null);
+  const [regenerateFiles, setRegenerateFiles] = useState<{ id: string; files: File[] } | null>(null);
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [usedAttachments, setUsedAttachments] = useState<{ names: string[]; truncated: string[] } | null>(null);
   const generateAbort = useRef<AbortController | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [storageLoaded, setStorageLoaded] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
   const taskListRef = useRef<HTMLDivElement>(null);
@@ -196,19 +316,23 @@ export default function HomePage() {
       } else {
         setShowNamePrompt(true);
       }
-    } catch {}
+      setStorageLoaded(true);
+    } catch {
+      // Stored data couldn't be read. Leave it in place instead of overwriting it.
+    }
   }, []);
   // Aging depends on the clock, so a tab left open still re-ranks.
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 3_600_000);
     return () => clearInterval(timer);
   }, []);
+  // Saving waits until loading has finished, so startup can't overwrite saved tasks.
   useEffect(() => {
-    localStorage.setItem('git-tasklist', JSON.stringify(savedTasks));
-  }, [savedTasks]);
+    if (storageLoaded) localStorage.setItem('git-tasklist', JSON.stringify(savedTasks));
+  }, [savedTasks, storageLoaded]);
   useEffect(() => {
-    localStorage.setItem('git-archive', JSON.stringify(archivedTasks));
-  }, [archivedTasks]);
+    if (storageLoaded) localStorage.setItem('git-archive', JSON.stringify(archivedTasks));
+  }, [archivedTasks, storageLoaded]);
 
   const handleArchiveTask = useCallback((taskId: string) => {
     const task = savedTasks.find(t => t.id === taskId);
@@ -230,13 +354,14 @@ export default function HomePage() {
       inputRef.current?.focus();
       return;
     }
-    if (!urgency || !timeEstimate) {
+    if (!urgency || expectedMinutes === null) {
       setShowMissing(true);
       return;
     }
     setShowMissing(false);
     setStepsFailed(false);
-    setDraftTask(trimmed);
+    setAttachmentError(null);
+    setUsedAttachments(null);
 
     let generatedSteps: Step[] = [];
     if (mode === 'auto') {
@@ -245,23 +370,33 @@ export default function HomePage() {
       setGenerating(true);
       setShowResults(false);
       try {
-        generatedSteps = await requestSteps(trimmed, urgency, timeEstimate, controller.signal);
-      } catch {
+        const result = await requestSteps(trimmed, urgency, expectedMinutes, attachments, controller.signal);
+        generatedSteps = result.steps;
+        if (attachments.length > 0) setUsedAttachments({ names: attachments.map(f => f.name), truncated: result.truncated });
+      } catch (error) {
         // Cleared or replaced while the request was running.
         if (controller.signal.aborted) return;
+        // A bad file is fixable here, so stay on the form.
+        const fileProblem = fileProblemMessage(error);
+        if (fileProblem) {
+          setAttachmentError(fileProblem);
+          setGenerating(false);
+          return;
+        }
         setMode('custom');
         setStepsFailed(true);
       }
       setGenerating(false);
     }
 
+    setDraftTask(trimmed);
     setSteps(generatedSteps);
     setCheckedSteps(new Array(generatedSteps.length).fill(false));
     setShowResults(true);
     setTimeout(() => {
       resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 100);
-  }, [task, urgency, timeEstimate, mode, generating]);
+  }, [task, urgency, expectedMinutes, mode, generating, attachments]);
 
   const handleAddPreviewStep = useCallback(() => {
     setSteps(prev => [...prev, { text: 'new step', note: null }]);
@@ -288,11 +423,14 @@ export default function HomePage() {
     generateAbort.current?.abort();
     setGenerating(false);
     setStepsFailed(false);
+    setAttachments([]);
+    setAttachmentError(null);
+    setUsedAttachments(null);
     setShowResults(false);
     setTask('');
     setCheckedSteps([]);
     setUrgency(null);
-    setTimeEstimate(null);
+    setExpectedMinutes(null);
     setShowMissing(false);
   }, []);
 
@@ -324,7 +462,7 @@ export default function HomePage() {
   }, [resetDraft]);
 
   const handleSaveTask = useCallback(() => {
-    if (!urgency || !timeEstimate) return;
+    if (!urgency || expectedMinutes === null) return;
     const savedAt = Date.now();
     const newTask: SavedTask = {
       id: savedAt.toString(),
@@ -332,7 +470,7 @@ export default function HomePage() {
       steps,
       checkedSteps,
       priority: urgency,
-      timeEstimate,
+      expectedMinutes,
       urgencySetAt: savedAt,
     };
     setSavedTasks(prev => [...prev, newTask]);
@@ -341,7 +479,7 @@ export default function HomePage() {
     setTimeout(() => {
       taskListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 200);
-  }, [draftTask, urgency, timeEstimate, steps, checkedSteps, resetDraft]);
+  }, [draftTask, urgency, expectedMinutes, steps, checkedSteps, resetDraft]);
 
   // Setting urgency by hand is a reassessment, so the aging clock restarts.
   const handleSetTaskUrgency = useCallback((taskId: string, priority: Priority) => {
@@ -353,20 +491,24 @@ export default function HomePage() {
   const handleRegenerateSteps = useCallback(async (saved: SavedTask) => {
     setRegeneratingId(saved.id);
     setRegenerateFailedId(null);
+    setRegenerateError(null);
     try {
       const { urgency: current } = agedUrgency(saved, Date.now());
-      const newSteps = await requestSteps(saved.task, current, saved.timeEstimate);
+      const files = regenerateFiles?.id === saved.id ? regenerateFiles.files : [];
+      const { steps: newSteps } = await requestSteps(saved.task, current, saved.expectedMinutes, files);
       setSavedTasks(prev => prev.map(t => t.id === saved.id
         ? { ...t, steps: newSteps, checkedSteps: new Array(newSteps.length).fill(false) }
         : t));
-    } catch {
+      setRegenerateFiles(null);
+    } catch (error) {
       setRegenerateFailedId(saved.id);
+      setRegenerateError(fileProblemMessage(error));
     }
     setRegeneratingId(null);
-  }, []);
+  }, [regenerateFiles]);
 
-  const handleSetTaskTime = useCallback((taskId: string, time: TimeEstimate) => {
-    setSavedTasks(prev => prev.map(t => t.id === taskId ? { ...t, timeEstimate: time } : t));
+  const handleSetTaskTime = useCallback((taskId: string, minutes: number) => {
+    setSavedTasks(prev => prev.map(t => t.id === taskId ? { ...t, expectedMinutes: minutes } : t));
   }, []);
 
   const handleEditTaskName = useCallback((taskId: string, newName: string) => {
@@ -415,7 +557,7 @@ export default function HomePage() {
     }));
   }, []);
 
-  const taskGroups = groupTasks(savedTasks, now);
+  const rankedTasks = rankTasks(savedTasks, now);
   const finishedTasks = savedTasks.filter(isFinished);
   const next = nextAction(savedTasks, now);
 
@@ -526,8 +668,17 @@ export default function HomePage() {
             transition={{ duration: 0.5 }}
             className="mb-6"
           >
-            <div className="text-4xl md:text-5xl font-bold text-foreground text-center mb-4 whitespace-nowrap [font-family:var(--font-display)]">
-              What needs doing?
+            <div className="min-h-20 md:min-h-0 text-4xl md:text-5xl font-bold text-foreground text-center mb-4 md:whitespace-nowrap [font-family:var(--font-display)]">
+              I need to{' '}
+              <Typewriter
+                text={TASK_SUGGESTIONS}
+                speed={65}
+                deleteSpeed={35}
+                waitTime={1800}
+                cursorChar="..."
+                className="text-emerald-500"
+                cursorClassName=""
+              />
             </div>
 
             <div className="flex gap-3 p-2 bg-card border-2 border-border rounded-3xl shadow-lg transition-all focus-within:border-emerald-500">
@@ -537,7 +688,7 @@ export default function HomePage() {
                 value={task}
                 onChange={e => setTask(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleGenerate()}
-                placeholder="e.g. File my taxes"
+                placeholder="What needs doing?"
                 aria-label="Task"
                 maxLength={120}
                 className="flex-1 bg-transparent border-none outline-none text-foreground font-semibold px-4 py-3 placeholder:text-muted-foreground/50"
@@ -547,8 +698,21 @@ export default function HomePage() {
 
             {/* Urgency and time drive both the ranking and the steps */}
             <div className="mt-4 space-y-3 px-1">
+              {mode === 'auto' && (
+                <div>
+                  <FileAttach
+                    files={attachments}
+                    label="attach instructions"
+                    error={attachmentError}
+                    onChange={(files, problem) => { setAttachments(files); setAttachmentError(problem); }}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Optional. Up to 5 PDF, Word, or text files, 4 MB total. Sent to an AI provider to write your steps. This site doesn&apos;t save them.
+                  </p>
+                </div>
+              )}
               <ChoiceRow label="urgency" options={PRIORITIES} value={urgency} onChange={setUrgency} missing={showMissing && !urgency} />
-              <ChoiceRow label="expected time" options={TIMES} value={timeEstimate} onChange={setTimeEstimate} missing={showMissing && !timeEstimate} />
+              <ScaleSlider label="expected time" stops={TIME_STOPS} value={expectedMinutes} resting={30} format={timeLabel} onChange={setExpectedMinutes} missing={showMissing && expectedMinutes === null} />
             </div>
 
             {/* Mode toggle */}
@@ -592,12 +756,18 @@ export default function HomePage() {
                   className="bg-card border-2 border-emerald-200 dark:border-emerald-900/50 rounded-2xl p-6 shadow-lg"
                 >
                   <p className="text-foreground font-bold text-base md:text-lg leading-relaxed">{draftTask}</p>
-                  {urgency && timeEstimate && (
+                  {urgency && expectedMinutes !== null && (
                     <p className="text-xs font-bold text-muted-foreground mt-1 mb-5">
-                      {GROUP_LABELS[groupFor(urgency, timeEstimate)]}: {urgency}, {timeLabel(timeEstimate)}
+                      {urgency}, {timeLabel(expectedMinutes)}
                     </p>
                   )}
                   <div className="border-t border-border mb-4" />
+                  {usedAttachments && (
+                    <p className="text-xs font-medium text-muted-foreground -mt-3 mb-5">
+                      Based on {usedAttachments.names.join(', ')}.
+                      {usedAttachments.truncated.length > 0 && ` Only the first part of ${usedAttachments.truncated.join(', ')} was used.`}
+                    </p>
+                  )}
                   {stepsFailed && (
                     <p role="alert" className="text-sm font-semibold text-foreground mb-3">
                       Steps couldn&apos;t be generated. Write your own below, or switch back to generate steps and try again.
@@ -746,10 +916,8 @@ export default function HomePage() {
                 </div>
               )}
 
-              {taskGroups.map(({ group, label, tasks: groupedTasks }) => (
-              <div key={group} className="space-y-2 pt-3">
-              <h3 className="text-xs font-bold text-muted-foreground">{label}</h3>
-              {groupedTasks.map(t => {
+              <div className="space-y-2 pt-3">
+              {rankedTasks.map(t => {
                 const doneCount = t.checkedSteps.filter(Boolean).length;
                 const allDone = isFinished(t);
                 const aged = agedUrgency(t, now);
@@ -805,7 +973,7 @@ export default function HomePage() {
                         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                           <span className={`text-xs font-bold ${PRIORITY_COLOR[aged.urgency]}`}>{aged.urgency}</span>
                           <span className="text-xs text-muted-foreground">·</span>
-                          <span className="text-xs text-muted-foreground font-medium">{timeLabel(t.timeEstimate)}</span>
+                          <span className="text-xs text-muted-foreground font-medium">{timeLabel(t.expectedMinutes)}</span>
                           <span className="text-xs text-muted-foreground">·</span>
                           <span className="text-xs text-muted-foreground font-medium">
                             {doneCount}/{t.steps.length} steps
@@ -852,7 +1020,7 @@ export default function HomePage() {
                           <div className="pt-4 space-y-4">
                             <div className="space-y-3">
                               <ChoiceRow label="urgency" options={PRIORITIES} value={aged.urgency} onChange={p => handleSetTaskUrgency(t.id, p)} />
-                              <ChoiceRow label="expected time" options={TIMES} value={t.timeEstimate} onChange={time => handleSetTaskTime(t.id, time)} />
+                              <ScaleSlider label="expected time" stops={TIME_STOPS} value={t.expectedMinutes} resting={30} format={timeLabel} onChange={minutes => handleSetTaskTime(t.id, minutes)} />
                             </div>
 
                             {/* Progress bar */}
@@ -932,16 +1100,26 @@ export default function HomePage() {
                               add step
                             </button>
 
-                            <div>
+                            <div className="space-y-2">
+                              <FileAttach
+                                files={regenerateFiles?.id === t.id ? regenerateFiles.files : []}
+                                label="attach instructions"
+                                error={regenerateError && regenerateFailedId === t.id ? regenerateError : null}
+                                onChange={(files, problem) => {
+                                  setRegenerateFiles({ id: t.id, files });
+                                  setRegenerateError(problem);
+                                  setRegenerateFailedId(problem ? t.id : null);
+                                }}
+                              />
                               <button
                                 onClick={() => handleRegenerateSteps(t)}
                                 disabled={regeneratingId === t.id}
-                                className="text-xs text-muted-foreground hover:text-emerald-600 transition-colors font-medium disabled:opacity-50"
+                                className="block text-xs text-muted-foreground hover:text-emerald-600 transition-colors font-medium disabled:opacity-50"
                               >
                                 {regeneratingId === t.id ? 'writing steps...' : 'regenerate steps'}
                               </button>
-                              {regenerateFailedId === t.id && (
-                                <p role="alert" className="text-xs font-semibold text-foreground mt-1">Steps couldn&apos;t be generated. Your current steps are unchanged.</p>
+                              {regenerateFailedId === t.id && !regenerateError && (
+                                <p role="alert" className="text-xs font-semibold text-foreground">Steps couldn&apos;t be generated. Your current steps are unchanged.</p>
                               )}
                             </div>
 
@@ -966,7 +1144,6 @@ export default function HomePage() {
               })}
 
               </div>
-              ))}
 
               {/* Every step checked, waiting to be marked complete */}
               {finishedTasks.length > 0 && (

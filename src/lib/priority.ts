@@ -1,6 +1,6 @@
 export type Priority = 'urgent' | 'high' | 'medium' | 'low';
-export type TimeEstimate = '10m' | '30m' | '1h' | '2h' | '5h+';
-export type GroupId = 'do-now' | 'block-today' | 'next-up' | 'batch' | 'this-week' | 'later';
+type TimeBand = 'up-to-10m' | 'up-to-30m' | 'up-to-1h' | 'up-to-3h' | 'over-3h';
+type GroupId = 'do-now' | 'block-today' | 'next-up' | 'batch' | 'this-week' | 'later';
 
 export interface Step {
   text: string;
@@ -14,7 +14,7 @@ export interface SavedTask {
   steps: Step[];
   checkedSteps: boolean[];
   priority: Priority;
-  timeEstimate: TimeEstimate;
+  expectedMinutes: number;
   /** When urgency was last set by hand. Aging counts from here. */
   urgencySetAt: number;
 }
@@ -26,45 +26,44 @@ export const PRIORITIES: { value: Priority; label: string }[] = [
   { value: 'low', label: 'low' },
 ];
 
-export const TIMES: { value: TimeEstimate; label: string }[] = [
-  { value: '10m', label: '10 min' },
-  { value: '30m', label: '30 min' },
-  { value: '1h', label: '1 hr' },
-  { value: '2h', label: '2 hrs' },
-  { value: '5h+', label: '5+ hrs' },
-];
-
-export const GROUP_LABELS: Record<GroupId, string> = {
-  'do-now': 'do now',
-  'block-today': 'block today',
-  'next-up': 'next up',
-  batch: 'batch',
-  'this-week': 'this week',
-  later: 'later',
-};
+/** Slider stops, in minutes. Closer together at the low end, where small differences matter. */
+export const TIME_STOPS = [5, 10, 15, 20, 30, 45, 60, 90, 120, 150, 180, 240, 300, 360, 420, 480];
 
 const GROUP_ORDER: GroupId[] = ['do-now', 'block-today', 'next-up', 'batch', 'this-week', 'later'];
 
-const MATRIX: Record<Priority, Record<TimeEstimate, GroupId>> = {
-  urgent: { '10m': 'do-now', '30m': 'do-now', '1h': 'do-now', '2h': 'block-today', '5h+': 'block-today' },
-  high: { '10m': 'do-now', '30m': 'next-up', '1h': 'next-up', '2h': 'block-today', '5h+': 'this-week' },
-  medium: { '10m': 'batch', '30m': 'batch', '1h': 'this-week', '2h': 'this-week', '5h+': 'this-week' },
-  low: { '10m': 'batch', '30m': 'batch', '1h': 'later', '2h': 'later', '5h+': 'later' },
+const MATRIX: Record<Priority, Record<TimeBand, GroupId>> = {
+  urgent: { 'up-to-10m': 'do-now', 'up-to-30m': 'do-now', 'up-to-1h': 'do-now', 'up-to-3h': 'block-today', 'over-3h': 'block-today' },
+  high: { 'up-to-10m': 'do-now', 'up-to-30m': 'next-up', 'up-to-1h': 'next-up', 'up-to-3h': 'block-today', 'over-3h': 'this-week' },
+  medium: { 'up-to-10m': 'batch', 'up-to-30m': 'batch', 'up-to-1h': 'this-week', 'up-to-3h': 'this-week', 'over-3h': 'this-week' },
+  low: { 'up-to-10m': 'batch', 'up-to-30m': 'batch', 'up-to-1h': 'later', 'up-to-3h': 'later', 'over-3h': 'later' },
 };
 
 const URGENCY_ASCENDING: Priority[] = ['low', 'medium', 'high', 'urgent'];
-const TIME_ASCENDING: TimeEstimate[] = ['10m', '30m', '1h', '2h', '5h+'];
+const OLD_TIME_MINUTES: Record<string, number> = { '10m': 10, '30m': 30, '1h': 60, '2h': 120, '5h+': 300 };
 
 const DAY_MS = 86_400_000;
 const DAYS_PER_LEVEL = 3;
 const MAX_LEVELS = 2;
 
-export function groupFor(urgency: Priority, time: TimeEstimate): GroupId {
-  return MATRIX[urgency][time];
+function timeBand(minutes: number): TimeBand {
+  if (minutes <= 10) return 'up-to-10m';
+  if (minutes <= 30) return 'up-to-30m';
+  if (minutes <= 60) return 'up-to-1h';
+  if (minutes <= 180) return 'up-to-3h';
+  return 'over-3h';
 }
 
-export function timeLabel(time: TimeEstimate): string {
-  return TIMES.find(t => t.value === time)?.label ?? time;
+function groupFor(urgency: Priority, minutes: number): GroupId {
+  return MATRIX[urgency][timeBand(minutes)];
+}
+
+/** "45 min", "1 hr", "1 hr 30 min", "3 hrs". */
+export function timeLabel(minutes: number): string {
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (hours === 0) return `${rest} min`;
+  const hourText = `${hours} hr${hours === 1 ? '' : 's'}`;
+  return rest ? `${hourText} ${rest} min` : hourText;
 }
 
 /** Urgency after aging: up one level per 3 days waited, at most two levels, capped at urgent. */
@@ -85,31 +84,31 @@ function compareTasks(a: SavedTask, b: SavedTask, now: number): number {
   const urgencyB = agedUrgency(b, now).urgency;
   return (
     URGENCY_ASCENDING.indexOf(urgencyB) - URGENCY_ASCENDING.indexOf(urgencyA) ||
-    TIME_ASCENDING.indexOf(a.timeEstimate) - TIME_ASCENDING.indexOf(b.timeEstimate) ||
+    a.expectedMinutes - b.expectedMinutes ||
     a.urgencySetAt - b.urgencySetAt
   );
 }
 
-/** Open tasks in matrix order, grouped. Empty groups are left out; finished tasks are excluded. */
-export function groupTasks(tasks: SavedTask[], now: number) {
-  return GROUP_ORDER.map(group => ({
-    group,
-    label: GROUP_LABELS[group],
-    tasks: tasks
-      .filter(t => !isFinished(t) && groupFor(agedUrgency(t, now).urgency, t.timeEstimate) === group)
-      .sort((a, b) => compareTasks(a, b, now)),
-  })).filter(g => g.tasks.length > 0);
+/**
+ * Open tasks in one ranked list. The matrix sets the order: each urgency and
+ * time combination falls into a tier, and tiers come in a fixed order. Finished
+ * tasks are left out.
+ */
+export function rankTasks(tasks: SavedTask[], now: number): SavedTask[] {
+  const tier = (t: SavedTask) => GROUP_ORDER.indexOf(groupFor(agedUrgency(t, now).urgency, t.expectedMinutes));
+  return tasks
+    .filter(t => !isFinished(t))
+    .sort((a, b) => tier(a) - tier(b) || compareTasks(a, b, now));
 }
-
 /** The single next thing to do: the first open step of the top-ranked task. */
 export function nextAction(tasks: SavedTask[], now: number) {
-  const task = groupTasks(tasks, now)[0]?.tasks[0];
+  const task = rankTasks(tasks, now)[0];
   if (!task) return null;
 
   const stepIndex = task.checkedSteps.findIndex(checked => !checked);
   const stepsLeft = task.checkedSteps.filter(checked => !checked).length;
   const { urgency } = agedUrgency(task, now);
-  const parts = [urgency[0].toUpperCase() + urgency.slice(1), timeLabel(task.timeEstimate)];
+  const parts = [urgency[0].toUpperCase() + urgency.slice(1), timeLabel(task.expectedMinutes)];
   if (task.steps.length > 0) parts.push(`${stepsLeft} step${stepsLeft === 1 ? '' : 's'} left`);
 
   return {
@@ -124,7 +123,9 @@ export function normalizeTask(raw: Record<string, unknown>): SavedTask {
   const steps = Array.isArray(raw.steps) ? (raw.steps as Step[]) : [];
   const checked = Array.isArray(raw.checkedSteps) ? (raw.checkedSteps as boolean[]) : [];
   const priority = PRIORITIES.some(p => p.value === raw.priority) ? (raw.priority as Priority) : 'medium';
-  const timeEstimate = TIMES.some(t => t.value === raw.timeEstimate) ? (raw.timeEstimate as TimeEstimate) : '30m';
+  const expectedMinutes = typeof raw.expectedMinutes === 'number'
+    ? raw.expectedMinutes
+    : OLD_TIME_MINUTES[String(raw.timeEstimate)] ?? 30;
   const setAt = Number(raw.urgencySetAt ?? raw.id);
 
   return {
@@ -133,7 +134,7 @@ export function normalizeTask(raw: Record<string, unknown>): SavedTask {
     steps,
     checkedSteps: steps.map((_, i) => !!checked[i]),
     priority,
-    timeEstimate,
+    expectedMinutes,
     urgencySetAt: Number.isFinite(setAt) && setAt > 0 ? setAt : Date.now(),
   };
 }
